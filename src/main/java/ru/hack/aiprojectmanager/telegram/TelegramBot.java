@@ -22,7 +22,9 @@ public class TelegramBot implements LongPollingUpdateConsumer {
             try {
                 dispatcher.dispatch(update);
             } catch (TelegramApiException e) {
-                log.error("Failed to process update {}: {}", update.getUpdateId(), e.getMessage());
+                log.error("Telegram API error on update {}: {}", update.getUpdateId(), e.getMessage());
+            } catch (Exception e) {
+                log.error("Unexpected error on update {}: {}", update.getUpdateId(), e.getMessage(), e);
             }
         });
     }

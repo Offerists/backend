@@ -15,13 +15,20 @@ spring:
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.yaml
 
+  ai:
+    openai:
+      api-key: ${GROQ_API_KEY}
+      base-url: https://api.groq.com/openai/v1
+      chat:
+        options:
+          model: llama-3.3-70b-versatile
+
 yougile:
   base-url: https://yougile.com/api-v2
 
 groq:
   api-key: ${GROQ_API_KEY}
   base-url: https://api.groq.com/openai/v1
-  model: llama-3.3-70b-versatile
   whisper-model: ${GROQ_WHISPER_MODEL:whisper-large-v3-turbo}
 
 telegram:

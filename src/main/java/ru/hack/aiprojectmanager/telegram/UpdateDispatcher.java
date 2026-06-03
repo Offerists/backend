@@ -29,16 +29,23 @@ public class UpdateDispatcher {
         String text = message.getText();
         if (text == null) return;
 
-        if (text.startsWith("/")) {
-            String command = text.split(" ")[0];
-            log.info("Command '{}' from userId={}", command, message.getFrom().getId());
-            handleCommand(message, command);
-        } else {
-            Long chatId = message.getChatId();
-            Long userId = message.getFrom().getId();
-            log.info("Message from userId={}, chatId={}", userId, chatId);
-            String reply = agentService.process(chatId, userId, text);
-            sendReply(chatId, reply);
+        Long chatId = message.getChatId();
+        try {
+            if (text.startsWith("/")) {
+                String command = text.split(" ")[0];
+                log.info("Command '{}' from userId={}", command, message.getFrom().getId());
+                handleCommand(message, command);
+            } else {
+                Long userId = message.getFrom().getId();
+                log.info("Message from userId={}, chatId={}", userId, chatId);
+                String reply = agentService.process(chatId, userId, text);
+                sendReply(chatId, reply);
+            }
+        } catch (TelegramApiException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error handling message in chatId={}: {}", chatId, e.getMessage(), e);
+            sendReply(chatId, "Произошла ошибка. Попробуйте позже.");
         }
     }
 
