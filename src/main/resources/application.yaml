@@ -17,3 +17,8 @@ spring:
 
 yougile:
   base-url: https://yougile.com/api-v2
+
+groq:
+  api-key: ${GROQ_API_KEY}
+  base-url: https://api.groq.com/openai/v1
+  model: llama-3.3-70b-versatile
