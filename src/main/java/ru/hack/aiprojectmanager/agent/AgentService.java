@@ -3,6 +3,8 @@ package ru.hack.aiprojectmanager.agent;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import ru.hack.aiprojectmanager.agent.groq.GroqLLMClient;
 import ru.hack.aiprojectmanager.agent.groq.dto.ChatMessage;
@@ -18,10 +20,13 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+@Slf4j
 @Service
+@RequiredArgsConstructor
 public class AgentService {
 
     private static final int MAX_ITERATIONS = 5;
+    //private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final String SYSTEM_PROMPT_TEMPLATE = """
             Ты — ассистент по управлению проектами. Помогай пользователю управлять задачами: создавать, менять статус, просматривать списки.
             Отвечай кратко и по делу на языке пользователя. При необходимости используй инструменты.
@@ -29,17 +34,9 @@ public class AgentService {
             """;
 
     private final GroqLLMClient llmClient;
-    private final SkillRegistry skillRegistry;
     private final ObjectMapper objectMapper;
+    private final SkillRegistry skillRegistry;
     private final MessageHistoryRepository historyRepository;
-
-    public AgentService(GroqLLMClient llmClient, SkillRegistry skillRegistry,
-                        ObjectMapper objectMapper, MessageHistoryRepository historyRepository) {
-        this.llmClient = llmClient;
-        this.skillRegistry = skillRegistry;
-        this.objectMapper = objectMapper;
-        this.historyRepository = historyRepository;
-    }
 
     public String process(Long chatId, Long telegramUserId, String userMessage) {
         List<Tool> tools = buildTools();

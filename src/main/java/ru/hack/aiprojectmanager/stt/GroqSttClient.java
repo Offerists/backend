@@ -1,3 +1,4 @@
+/*
 package ru.hack.aiprojectmanager.stt;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -54,3 +55,4 @@ public class GroqSttClient implements SttProvider {
 
     private record TranscriptionResponse(String text) {}
 }
+*/

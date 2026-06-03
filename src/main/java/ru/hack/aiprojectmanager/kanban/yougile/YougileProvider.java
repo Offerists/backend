@@ -1,6 +1,5 @@
 package ru.hack.aiprojectmanager.kanban.yougile;
 
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import ru.hack.aiprojectmanager.common.Task;
 import ru.hack.aiprojectmanager.common.TaskStatus;
@@ -12,7 +11,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
 
-@Profile("prod")
 @Component
 public class YougileProvider implements KanbanProvider {
 
