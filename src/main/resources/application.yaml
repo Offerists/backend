@@ -22,3 +22,8 @@ groq:
   api-key: ${GROQ_API_KEY}
   base-url: https://api.groq.com/openai/v1
   model: llama-3.3-70b-versatile
+
+telegram:
+  bot:
+    token: ${TELEGRAM_BOT_TOKEN}
+    username: ${TELEGRAM_BOT_USERNAME}

@@ -3,12 +3,15 @@ package ru.hack.aiprojectmanager.workspace;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "workspace_settings")
@@ -22,18 +25,31 @@ public class WorkspaceSettings {
     @Id
     private Long chatId;
 
-    @Column(nullable = false)
+    @Column
     private String yougileApiKey;
 
-    @Column(nullable = false)
+    @Column
     private String columnTodoId;
 
-    @Column(nullable = false)
+    @Column
     private String columnInProgressId;
 
     @Column
     private String columnReviewId;
 
-    @Column(nullable = false)
+    @Column
     private String columnDoneId;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean isConfigured = false;
+
+    @Column(nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @PrePersist
+    void prePersist() {
+        createdAt = LocalDateTime.now();
+        if (isConfigured == null) isConfigured = false;
+    }
 }
