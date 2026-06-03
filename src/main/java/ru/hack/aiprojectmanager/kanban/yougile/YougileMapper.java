@@ -1,43 +1,30 @@
 package ru.hack.aiprojectmanager.kanban.yougile;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import ru.hack.aiprojectmanager.common.Task;
 import ru.hack.aiprojectmanager.common.TaskStatus;
 import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileTaskDto;
 import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileTaskRequest;
-import ru.hack.aiprojectmanager.workspace.WorkspaceSettings;
+import ru.hack.aiprojectmanager.storage.UserBoardSettings;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 
 @Component
 public class YougileMapper {
 
-    private final ZoneId zone;
-
-    public YougileMapper(@Value("${app.timezone}") String timezone) {
-        this.zone = ZoneId.of(timezone);
-    }
-
-    public Task toDomain(YougileTaskDto dto, WorkspaceSettings settings) {
-        List<String> assigneeIds = dto.assigned() != null
-                ? dto.assigned().entrySet().stream()
-                        .filter(Map.Entry::getValue)
-                        .map(Map.Entry::getKey)
-                        .toList()
-                : List.of();
+    public Task toDomain(YougileTaskDto dto, UserBoardSettings board) {
+        List<String> assigneeIds = dto.assigned() != null ? dto.assigned() : List.of();
 
         return Task.builder()
                 .externalId(dto.id())
                 .title(dto.title())
                 .description(dto.description())
                 .columnId(dto.columnId())
-                .status(columnToStatus(dto.columnId(), settings))
+                .status(columnToStatus(dto.columnId(), board))
                 .assigneeIds(assigneeIds)
                 .assigneeId(assigneeIds.isEmpty() ? null : assigneeIds.getFirst())
                 .deadline(dto.deadline() != null ? toLocalDateTime(dto.deadline()) : null)
@@ -45,56 +32,53 @@ public class YougileMapper {
                 .build();
     }
 
-    public YougileTaskRequest toRequest(Task task, WorkspaceSettings settings) {
-        List<String> assigned = null;
-        if (task.getAssigneeIds() != null && !task.getAssigneeIds().isEmpty()) {
-            assigned = task.getAssigneeIds().stream()
-                    .filter(Objects::nonNull)
-                    .distinct()
-                    .toList();
+    public YougileTaskRequest toRequest(Task task, UserBoardSettings board) {
+        List<String> assigned = new ArrayList<>();
+        if (task.getAssigneeIds() != null) {
+            assigned.addAll(task.getAssigneeIds());
         } else if (task.getAssigneeId() != null) {
-            assigned = List.of(task.getAssigneeId());
+            assigned.add(task.getAssigneeId());
         }
 
         return YougileTaskRequest.builder()
                 .title(task.getTitle())
                 .description(task.getDescription())
-                .columnId(statusToColumn(task.getStatus(), settings))
+                .columnId(statusToColumn(task.getStatus(), board))
                 .deadline(task.getDeadline() != null ? toEpochMillis(task.getDeadline()) : null)
                 .startDate(task.getStartDate() != null ? toEpochMillis(task.getStartDate()) : null)
-                .assigned(assigned != null && assigned.isEmpty() ? null : assigned)
+                .assigned(assigned.isEmpty() ? null : assigned)
                 .build();
     }
 
-    public YougileTaskRequest toMoveRequest(TaskStatus newStatus, WorkspaceSettings settings) {
+    public YougileTaskRequest toMoveRequest(TaskStatus newStatus, UserBoardSettings board) {
         return YougileTaskRequest.builder()
-                .columnId(statusToColumn(newStatus, settings))
+                .columnId(statusToColumn(newStatus, board))
                 .build();
     }
 
-    private TaskStatus columnToStatus(String columnId, WorkspaceSettings s) {
-        if (columnId == null) return TaskStatus.TODO;
-        if (columnId.equals(s.getColumnTodoId())) return TaskStatus.TODO;
-        if (columnId.equals(s.getColumnInProgressId())) return TaskStatus.IN_PROGRESS;
-        if (columnId.equals(s.getColumnReviewId())) return TaskStatus.REVIEW;
-        if (columnId.equals(s.getColumnDoneId())) return TaskStatus.DONE;
+    private TaskStatus columnToStatus(String columnId, UserBoardSettings b) {
+        if (columnId == null || b == null) return TaskStatus.TODO;
+        if (columnId.equals(b.getColumnTodoId())) return TaskStatus.TODO;
+        if (columnId.equals(b.getColumnInProgressId())) return TaskStatus.IN_PROGRESS;
+        if (columnId.equals(b.getColumnReviewId())) return TaskStatus.REVIEW;
+        if (columnId.equals(b.getColumnDoneId())) return TaskStatus.DONE;
         return TaskStatus.TODO;
     }
 
-    private String statusToColumn(TaskStatus status, WorkspaceSettings s) {
+    private String statusToColumn(TaskStatus status, UserBoardSettings b) {
         return switch (status != null ? status : TaskStatus.TODO) {
-            case TODO -> s.getColumnTodoId();
-            case IN_PROGRESS -> s.getColumnInProgressId();
-            case REVIEW -> s.getColumnReviewId();
-            case DONE -> s.getColumnDoneId();
+            case TODO -> b.getColumnTodoId();
+            case IN_PROGRESS -> b.getColumnInProgressId();
+            case REVIEW -> b.getColumnReviewId();
+            case DONE -> b.getColumnDoneId();
         };
     }
 
     private LocalDateTime toLocalDateTime(long epochMillis) {
-        return Instant.ofEpochMilli(epochMillis).atZone(zone).toLocalDateTime();
+        return Instant.ofEpochMilli(epochMillis).atZone(ZoneOffset.UTC).toLocalDateTime();
     }
 
     private long toEpochMillis(LocalDateTime dateTime) {
-        return dateTime.atZone(zone).toInstant().toEpochMilli();
+        return dateTime.toInstant(ZoneOffset.UTC).toEpochMilli();
     }
 }

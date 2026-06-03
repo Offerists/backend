@@ -1,6 +1,6 @@
 package ru.hack.aiprojectmanager.agent.skill;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import org.springframework.stereotype.Component;
 import ru.hack.aiprojectmanager.storage.TaskEntity;
 import ru.hack.aiprojectmanager.storage.TaskEntityRepository;
@@ -40,7 +40,7 @@ public class SetReminderSkill implements Skill {
     }
 
     @Override
-    public String execute(Long chatId, JsonNode args) {
+    public String execute(Long telegramUserId, JsonNode args) {
         String taskId = requireText(args, "task_id");
         String rawRemindAt = requireText(args, "remind_at");
         LocalDateTime remindAt;
@@ -52,10 +52,10 @@ public class SetReminderSkill implements Skill {
         }
         String title = optText(args, "title") != null ? optText(args, "title") : taskId;
 
-        TaskEntity task = taskEntityRepository.findByYougileTaskIdAndChatId(taskId, chatId)
+        TaskEntity task = taskEntityRepository.findByYougileTaskIdAndChatId(taskId, telegramUserId)
                 .orElseGet(() -> TaskEntity.builder()
                         .yougileTaskId(taskId)
-                        .chatId(chatId)
+                        .chatId(telegramUserId)
                         .title(title)
                         .build());
 

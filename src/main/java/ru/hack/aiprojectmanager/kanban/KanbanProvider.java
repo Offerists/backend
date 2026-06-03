@@ -7,13 +7,13 @@ import java.util.List;
 
 public interface KanbanProvider {
 
-    String createTask(Long chatId, Task task);
+    String createTask(Long telegramUserId, Task task);
 
-    void moveTask(Long chatId, String externalTaskId, TaskStatus newStatus);
+    void moveTask(Long telegramUserId, String externalTaskId, TaskStatus newStatus);
 
-    List<Task> getTasksByAssignee(Long chatId, String externalUserId);
+    List<Task> getTasksByAssignee(Long telegramUserId, String yougileAssigneeId);
 
-    Task getTask(Long chatId, String externalTaskId);
+    Task getTask(Long telegramUserId, String externalTaskId);
 
-    void updateTask(Long chatId, String externalTaskId, Task updated);
+    void updateTask(Long telegramUserId, String externalTaskId, Task updated);
 }

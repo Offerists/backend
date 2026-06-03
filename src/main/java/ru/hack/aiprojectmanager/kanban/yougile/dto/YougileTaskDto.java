@@ -2,7 +2,7 @@ package ru.hack.aiprojectmanager.kanban.yougile.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
-import java.util.Map;
+import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record YougileTaskDto(
@@ -11,7 +11,7 @@ public record YougileTaskDto(
         String columnId,
         Long deadline,
         Long startDate,
-        Map<String, Boolean> assigned,
+        List<String> assigned,
         String description,
         Boolean deleted
 ) {}

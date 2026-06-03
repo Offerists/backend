@@ -20,7 +20,6 @@ public class YougileTaskRequest {
     private String columnId;
     private Long deadline;
     private Long startDate;
-    // YouGile API v2 ожидает массив id пользователей: "assigned": ["<uuid>", ...]
-    private List<String> assigned;
+    private List<String> assigned;  // YouGile API требует UUID array
     private String description;
 }

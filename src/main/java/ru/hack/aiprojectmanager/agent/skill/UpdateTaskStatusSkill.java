@@ -1,6 +1,6 @@
 package ru.hack.aiprojectmanager.agent.skill;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import org.springframework.stereotype.Component;
 import ru.hack.aiprojectmanager.common.TaskStatus;
 import ru.hack.aiprojectmanager.kanban.KanbanProvider;
@@ -43,7 +43,7 @@ public class UpdateTaskStatusSkill implements Skill {
     }
 
     @Override
-    public String execute(Long chatId, JsonNode args) {
+    public String execute(Long telegramUserId, JsonNode args) {
         String taskId = requireText(args, "task_id");
         String rawStatus = requireText(args, "status");
         TaskStatus newStatus;
@@ -53,7 +53,7 @@ public class UpdateTaskStatusSkill implements Skill {
             throw new IllegalArgumentException(
                     "неизвестный статус «" + rawStatus + "», допустимы: " + String.join(", ", STATUSES));
         }
-        kanban.moveTask(chatId, taskId, newStatus);
+        kanban.moveTask(telegramUserId, taskId, newStatus);
         return "Статус обновлён";
     }
 }

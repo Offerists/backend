@@ -2,6 +2,7 @@ package ru.hack.aiprojectmanager.telegram;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -21,10 +22,33 @@ public class UpdateDispatcher {
     private final OnboardingService onboardingService;
     private final TelegramClient telegramClient;
 
+    @Value("${telegram.bot.username}")
+    private String botUsername;
+
     public void dispatch(Update update) throws TelegramApiException {
         if (update.hasMessage()) {
-            handleMessage(update.getMessage());
+            Message message = update.getMessage();
+            if (message.getNewChatMembers() != null &&
+                    message.getNewChatMembers().stream()
+                            .anyMatch(u -> botUsername.equalsIgnoreCase(u.getUserName()))) {
+                sendGroupWelcome(message.getChatId());
+                return;
+            }
+            handleMessage(message);
         }
+    }
+
+    private void sendGroupWelcome(Long chatId) throws TelegramApiException {
+        sendReply(chatId, """
+                Привет! Я бот для управления задачами YouGile 👋
+
+                Чтобы начать работу, каждый участник должен зарегистрироваться:
+                1. Найдите меня в Telegram: @""" + botUsername + """
+
+                2. Напишите мне /start в личных сообщениях
+                3. Введите логин и пароль от YouGile
+
+                После регистрации вы сможете управлять задачами прямо из этого чата — просто напишите мне @""" + botUsername + " и ваш запрос.");
     }
 
     private void handleMessage(Message message) throws TelegramApiException {
@@ -32,11 +56,21 @@ public class UpdateDispatcher {
         if (text == null) return;
 
         Long chatId = message.getChatId();
+        boolean isGroupChat = chatId < 0;
+
+        // В группе реагируем только на команды и @упоминания
+        if (isGroupChat && !isAddressedToBot(text)) {
+            return;
+        }
+
+        // В группе убираем @username из текста перед обработкой
+        String cleanText = isGroupChat ? removeMyMention(text) : text;
+
         try {
-            if (text.startsWith("/")) {
-                handleCommand(message, text.split(" ")[0]);
+            if (cleanText.startsWith("/")) {
+                handleCommand(message, cleanText.split(" ")[0], chatId);
             } else {
-                handleText(message);
+                handleText(message, chatId, cleanText);
             }
         } catch (TelegramApiException e) {
             throw e;
@@ -46,8 +80,16 @@ public class UpdateDispatcher {
         }
     }
 
-    private void handleCommand(Message message, String command) throws TelegramApiException {
-        Long chatId = message.getChatId();
+    private boolean isAddressedToBot(String text) {
+        if (text.startsWith("/")) return true;
+        return text.toLowerCase().contains("@" + botUsername.toLowerCase());
+    }
+
+    private String removeMyMention(String text) {
+        return text.replaceAll("(?i)@" + botUsername, "").trim();
+    }
+
+    private void handleCommand(Message message, String command, Long chatId) throws TelegramApiException {
         Long userId = message.getFrom().getId();
 
         switch (command) {
@@ -55,7 +97,7 @@ public class UpdateDispatcher {
                 log.info("Command '/start' from userId={}", userId);
                 botUserService.findOrRegister(userId, chatId,
                         message.getFrom().getUserName(), message.getFrom().getFirstName());
-                if (onboardingService.needsOnboarding(chatId)) {
+                if (onboardingService.needsOnboarding(userId)) {
                     sendReply(chatId, onboardingService.start(chatId, userId));
                 } else {
                     sendReply(chatId, "С возвращением! Чем могу помочь?");
@@ -75,19 +117,17 @@ public class UpdateDispatcher {
         }
     }
 
-    private void handleText(Message message) throws TelegramApiException {
-        Long chatId = message.getChatId();
+    private void handleText(Message message, Long chatId, String text) throws TelegramApiException {
         Long userId = message.getFrom().getId();
-        String text = message.getText();
         log.info("Message from userId={}, chatId={}", userId, chatId);
 
-        if (onboardingService.isInProgress(chatId)) {
-            sendReply(chatId, onboardingService.handle(chatId, text));
+        if (onboardingService.isInProgress(userId)) {
+            sendReply(chatId, onboardingService.handle(userId, text));
             return;
         }
 
-        if (onboardingService.needsOnboarding(chatId)) {
-            sendReply(chatId, "Сначала нужно настроить интеграцию. Введи /start");
+        if (onboardingService.needsOnboarding(userId)) {
+            sendReply(chatId, "Сначала нужно настроить интеграцию — напиши мне в личку /start");
             return;
         }
 

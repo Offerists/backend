@@ -5,7 +5,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -13,16 +12,14 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.time.LocalDateTime;
-
 @Entity
-@Table(name = "app_users")
+@Table(name = "user_board_settings")
 @Getter
 @Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class AppUser {
+public class UserBoardSettings {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -32,20 +29,16 @@ public class AppUser {
     private Long telegramId;
 
     @Column(nullable = false)
-    private Long chatId;
+    private String companyId;
 
-    private String yougileUserId;
-    private String yougileApiKey;
-    private String yougileRole;
-    private String yougileCompanyId;
-    private String username;
-    private String fullName;
+    @Column(nullable = false)
+    private String boardId;
 
-    @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    private String columnTodoId;
+    private String columnInProgressId;
+    private String columnReviewId;
+    private String columnDoneId;
 
-    @PrePersist
-    void prePersist() {
-        createdAt = LocalDateTime.now();
-    }
+    @Column(nullable = false)
+    private boolean isDefault;
 }

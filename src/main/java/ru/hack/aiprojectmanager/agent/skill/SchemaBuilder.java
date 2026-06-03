@@ -1,8 +1,8 @@
 package ru.hack.aiprojectmanager.agent.skill;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.util.List;
 
@@ -32,7 +32,7 @@ class SchemaBuilder {
         properties.set(name, prop);
 
         if (required) {
-            var existing = (com.fasterxml.jackson.databind.node.ArrayNode)
+            var existing = (tools.jackson.databind.node.ArrayNode)
                     schema.withArrayProperty("required");
             existing.add(name);
         }
