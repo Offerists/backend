@@ -11,9 +11,9 @@ import ru.hack.aiprojectmanager.workspace.WorkspaceSettings;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Component
 public class YougileMapper {
@@ -46,11 +46,14 @@ public class YougileMapper {
     }
 
     public YougileTaskRequest toRequest(Task task, WorkspaceSettings settings) {
-        Map<String, Boolean> assigned = new HashMap<>();
-        if (task.getAssigneeIds() != null) {
-            task.getAssigneeIds().forEach(id -> assigned.put(id, true));
+        List<String> assigned = null;
+        if (task.getAssigneeIds() != null && !task.getAssigneeIds().isEmpty()) {
+            assigned = task.getAssigneeIds().stream()
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .toList();
         } else if (task.getAssigneeId() != null) {
-            assigned.put(task.getAssigneeId(), true);
+            assigned = List.of(task.getAssigneeId());
         }
 
         return YougileTaskRequest.builder()
@@ -59,7 +62,7 @@ public class YougileMapper {
                 .columnId(statusToColumn(task.getStatus(), settings))
                 .deadline(task.getDeadline() != null ? toEpochMillis(task.getDeadline()) : null)
                 .startDate(task.getStartDate() != null ? toEpochMillis(task.getStartDate()) : null)
-                .assigned(assigned.isEmpty() ? null : assigned)
+                .assigned(assigned != null && assigned.isEmpty() ? null : assigned)
                 .build();
     }
 

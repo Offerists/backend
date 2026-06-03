@@ -7,7 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.util.Map;
+import java.util.List;
 
 @Getter
 @Setter
@@ -20,6 +20,7 @@ public class YougileTaskRequest {
     private String columnId;
     private Long deadline;
     private Long startDate;
-    private Map<String, Boolean> assigned;
+    // YouGile API v2 ожидает массив id пользователей: "assigned": ["<uuid>", ...]
+    private List<String> assigned;
     private String description;
 }
