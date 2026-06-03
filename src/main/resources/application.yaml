@@ -1,3 +1,6 @@
+app:
+  timezone: ${APP_TIMEZONE:Europe/Moscow}
+
 spring:
   application:
     name: AIProjectManager

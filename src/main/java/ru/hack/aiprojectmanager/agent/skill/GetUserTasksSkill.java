@@ -42,7 +42,13 @@ public class GetUserTasksSkill implements Skill {
 
     @Override
     public String execute(Long chatId, JsonNode args) {
-        long telegramUserId = args.get("telegram_user_id").asLong();
+        String raw = requireText(args, "telegram_user_id");
+        long telegramUserId;
+        try {
+            telegramUserId = Long.parseLong(raw);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("telegram_user_id должен быть числом, получено «" + raw + "»");
+        }
 
         AppUser user = appUserRepository.findByTelegramIdAndChatId(telegramUserId, chatId)
                 .orElse(null);

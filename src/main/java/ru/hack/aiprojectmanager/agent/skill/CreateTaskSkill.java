@@ -48,7 +48,7 @@ public class CreateTaskSkill implements Skill {
     @Override
     public String execute(Long chatId, JsonNode args) {
         Task task = Task.builder()
-                .title(args.get("title").asText())
+                .title(requireText(args, "title"))
                 .description(textOrNull(args, "description"))
                 .assigneeId(resolveAssignee(chatId, args))
                 .status(TaskStatus.TODO)

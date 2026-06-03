@@ -15,6 +15,11 @@ import ru.hack.aiprojectmanager.agent.skill.SkillRegistry;
 import ru.hack.aiprojectmanager.storage.MessageHistory;
 import ru.hack.aiprojectmanager.storage.MessageHistoryRepository;
 
+import org.springframework.beans.factory.annotation.Value;
+
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -29,24 +34,35 @@ public class AgentService {
             Отвечай кратко и по делу на языке пользователя. При необходимости используй инструменты.
             Telegram ID текущего пользователя: %d
 
+            Текущие дата и время: %s (таймзона %s).
+            Относительные сроки («сегодня», «завтра», «через 2 часа») вычисляй от текущего времени
+            и передавай в инструменты в формате ISO-8601 (yyyy-MM-ddTHH:mm).
+
             ВАЖНЫЕ ПРАВИЛА:
             - Никогда не показывай пользователю UUID, task_id и любые технические идентификаторы.
             - [task_id:...] в ответах инструментов — только для твоего внутреннего использования при вызове update_task_status.
             - Если нужно обновить статус задачи — сначала вызови get_user_tasks чтобы получить task_id, затем update_task_status.
+            - Чтобы назначить задачу на человека по имени — сначала найди его через find_user и передай полученный telegram_id в поле assignee_telegram_id.
             - Не упоминай /start — это техническая команда, пользователь уже настроен.
             """;
+
+    private static final DateTimeFormatter PROMPT_TIME_FORMAT =
+            DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
 
     private final ChatClient chatClient;
     private final SkillRegistry skillRegistry;
     private final MessageHistoryRepository historyRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ZoneId zone;
 
     public AgentService(ChatClient.Builder chatClientBuilder,
                         SkillRegistry skillRegistry,
-                        MessageHistoryRepository historyRepository) {
+                        MessageHistoryRepository historyRepository,
+                        @Value("${app.timezone}") String timezone) {
         this.chatClient = chatClientBuilder.build();
         this.skillRegistry = skillRegistry;
         this.historyRepository = historyRepository;
+        this.zone = ZoneId.of(timezone);
     }
 
     public String process(Long chatId, Long telegramUserId, String userMessage) {
@@ -55,8 +71,9 @@ public class AgentService {
 
         String reply;
         try {
+            String now = LocalDateTime.now(zone).format(PROMPT_TIME_FORMAT);
             reply = chatClient.prompt()
-                    .system(SYSTEM_PROMPT.formatted(telegramUserId))
+                    .system(SYSTEM_PROMPT.formatted(telegramUserId, now, zone.getId()))
                     .messages(history)
                     .user(userMessage)
                     .toolCallbacks(tools)
@@ -98,12 +115,30 @@ public class AgentService {
                 .map(skill -> FunctionToolCallback
                         .builder(skill.getName(), (Map<String, Object> args) -> {
                             JsonNode node = objectMapper.valueToTree(args);
-                            return skill.execute(chatId, node);
+                            return invokeSkill(skill, chatId, node);
                         })
                         .description(skill.getDescription())
                         .inputType(Map.class)
                         .inputSchema(skill.getParametersSchema().toString())
                         .build())
                 .toArray(ToolCallback[]::new);
+    }
+
+    /**
+     * Выполняет скилл и превращает любой сбой в строку-наблюдение для модели,
+     * а не в исключение: так LLM может переспросить или объяснить ошибку,
+     * а не упасть в общий обработчик с немым «не смог обработать».
+     */
+    private String invokeSkill(Skill skill, Long chatId, JsonNode args) {
+        log.info("Tool call '{}' chatId={} args={}", skill.getName(), chatId, args);
+        try {
+            return skill.execute(chatId, args);
+        } catch (IllegalArgumentException e) {
+            log.warn("Tool '{}' rejected args: {}", skill.getName(), e.getMessage());
+            return "Ошибка: " + e.getMessage();
+        } catch (Exception e) {
+            log.error("Tool '{}' failed: {}", skill.getName(), e.getMessage(), e);
+            return "Не удалось выполнить «" + skill.getName() + "»: " + e.getMessage();
+        }
     }
 }

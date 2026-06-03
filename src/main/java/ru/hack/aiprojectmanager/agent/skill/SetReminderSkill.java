@@ -7,6 +7,7 @@ import ru.hack.aiprojectmanager.storage.TaskEntityRepository;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 
 @Component
 public class SetReminderSkill implements Skill {
@@ -40,11 +41,16 @@ public class SetReminderSkill implements Skill {
 
     @Override
     public String execute(Long chatId, JsonNode args) {
-        String taskId = args.get("task_id").asText();
-        LocalDateTime remindAt = LocalDateTime.parse(
-                args.get("remind_at").asText(), DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-        String title = args.has("title") && !args.get("title").isNull()
-                ? args.get("title").asText() : taskId;
+        String taskId = requireText(args, "task_id");
+        String rawRemindAt = requireText(args, "remind_at");
+        LocalDateTime remindAt;
+        try {
+            remindAt = LocalDateTime.parse(rawRemindAt, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException(
+                    "неверный формат времени «" + rawRemindAt + "», ожидается yyyy-MM-ddTHH:mm");
+        }
+        String title = optText(args, "title") != null ? optText(args, "title") : taskId;
 
         TaskEntity task = taskEntityRepository.findByYougileTaskIdAndChatId(taskId, chatId)
                 .orElseGet(() -> TaskEntity.builder()

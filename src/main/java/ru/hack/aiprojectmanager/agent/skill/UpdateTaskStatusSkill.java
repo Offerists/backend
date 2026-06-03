@@ -44,8 +44,15 @@ public class UpdateTaskStatusSkill implements Skill {
 
     @Override
     public String execute(Long chatId, JsonNode args) {
-        String taskId = args.get("task_id").asText();
-        TaskStatus newStatus = TaskStatus.valueOf(args.get("status").asText());
+        String taskId = requireText(args, "task_id");
+        String rawStatus = requireText(args, "status");
+        TaskStatus newStatus;
+        try {
+            newStatus = TaskStatus.valueOf(rawStatus);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(
+                    "неизвестный статус «" + rawStatus + "», допустимы: " + String.join(", ", STATUSES));
+        }
         kanban.moveTask(chatId, taskId, newStatus);
         return "Статус обновлён";
     }

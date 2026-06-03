@@ -1,5 +1,6 @@
 package ru.hack.aiprojectmanager.kanban.yougile;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import ru.hack.aiprojectmanager.common.Task;
 import ru.hack.aiprojectmanager.common.TaskStatus;
@@ -9,13 +10,19 @@ import ru.hack.aiprojectmanager.workspace.WorkspaceSettings;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 @Component
 public class YougileMapper {
+
+    private final ZoneId zone;
+
+    public YougileMapper(@Value("${app.timezone}") String timezone) {
+        this.zone = ZoneId.of(timezone);
+    }
 
     public Task toDomain(YougileTaskDto dto, WorkspaceSettings settings) {
         List<String> assigneeIds = dto.assigned() != null
@@ -81,10 +88,10 @@ public class YougileMapper {
     }
 
     private LocalDateTime toLocalDateTime(long epochMillis) {
-        return Instant.ofEpochMilli(epochMillis).atZone(ZoneOffset.UTC).toLocalDateTime();
+        return Instant.ofEpochMilli(epochMillis).atZone(zone).toLocalDateTime();
     }
 
     private long toEpochMillis(LocalDateTime dateTime) {
-        return dateTime.toInstant(ZoneOffset.UTC).toEpochMilli();
+        return dateTime.atZone(zone).toInstant().toEpochMilli();
     }
 }
