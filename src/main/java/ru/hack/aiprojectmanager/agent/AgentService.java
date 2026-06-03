@@ -1,6 +1,7 @@
 package ru.hack.aiprojectmanager.agent;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -16,6 +17,7 @@ import ru.hack.aiprojectmanager.storage.MessageHistoryRepository;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 @Slf4j
@@ -31,6 +33,7 @@ public class AgentService {
     private final ChatClient chatClient;
     private final SkillRegistry skillRegistry;
     private final MessageHistoryRepository historyRepository;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AgentService(ChatClient.Builder chatClientBuilder,
                         SkillRegistry skillRegistry,
@@ -87,9 +90,15 @@ public class AgentService {
     private ToolCallback[] buildTools(Long chatId) {
         return skillRegistry.all().stream()
                 .map(skill -> FunctionToolCallback
-                        .builder(skill.getName(), (JsonNode args) -> skill.execute(chatId, args))
+                        .builder(skill.getName(), (Map<String, Object> args) -> {
+                            // Spring AI (Spring Boot 4) deserializes tool args via Jackson 3.
+                            // Take a plain Map at that boundary, then convert to the Jackson 2
+                            // JsonNode the skills are built on.
+                            JsonNode node = objectMapper.valueToTree(args);
+                            return skill.execute(chatId, node);
+                        })
                         .description(skill.getDescription())
-                        .inputType(JsonNode.class)
+                        .inputType(Map.class)
                         .inputSchema(skill.getParametersSchema().toString())
                         .build())
                 .toArray(ToolCallback[]::new);
