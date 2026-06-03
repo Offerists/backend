@@ -16,7 +16,7 @@ public class UpdateTaskStatusSkill implements Skill {
             .toList();
 
     private static final JsonNode SCHEMA = SchemaBuilder.object()
-            .required("task_id", "string", "Внешний ID задачи")
+            .required("task_id", "string", "ID задачи из результата get_user_tasks")
             .required("status", "string", "Новый статус задачи")
             .enumValues("status", STATUSES)
             .build();
@@ -34,7 +34,7 @@ public class UpdateTaskStatusSkill implements Skill {
 
     @Override
     public String getDescription() {
-        return "Переместить задачу в другой статус (колонку)";
+        return "Переместить задачу в другой статус. task_id берётся из результата get_user_tasks.";
     }
 
     @Override
@@ -47,6 +47,6 @@ public class UpdateTaskStatusSkill implements Skill {
         String taskId = args.get("task_id").asText();
         TaskStatus newStatus = TaskStatus.valueOf(args.get("status").asText());
         kanban.moveTask(chatId, taskId, newStatus);
-        return "Статус задачи " + taskId + " обновлён: " + newStatus;
+        return "Статус обновлён";
     }
 }

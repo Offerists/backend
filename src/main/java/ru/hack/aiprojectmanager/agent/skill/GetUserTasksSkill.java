@@ -32,7 +32,7 @@ public class GetUserTasksSkill implements Skill {
 
     @Override
     public String getDescription() {
-        return "Получить задачи конкретного пользователя по его Telegram ID";
+        return "Получить задачи пользователя по его Telegram ID";
     }
 
     @Override
@@ -48,23 +48,35 @@ public class GetUserTasksSkill implements Skill {
                 .orElse(null);
 
         if (user == null || user.getYougileUserId() == null) {
-            return "Пользователь не привязан к YouGile. Попросите его выполнить /start";
+            return "Задачи не найдены";
         }
 
         List<Task> tasks = kanban.getTasksByAssignee(chatId, user.getYougileUserId());
 
         if (tasks.isEmpty()) {
-            return "У пользователя нет активных задач";
+            return "Активных задач нет";
         }
 
         StringBuilder sb = new StringBuilder();
         for (Task t : tasks) {
-            sb.append("• [").append(t.getStatus()).append("] ").append(t.getTitle());
+            sb.append("• «").append(t.getTitle()).append("» — ").append(statusLabel(t.getStatus().name()));
             if (t.getDeadline() != null) {
-                sb.append(" (до ").append(t.getDeadline().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))).append(")");
+                sb.append(", до ").append(t.getDeadline().format(DateTimeFormatter.ofPattern("dd.MM.yyyy")));
             }
-            sb.append(" — id:").append(t.getExternalId()).append("\n");
+            // ID нужен только для инструментов, не показывай его пользователю
+            sb.append(" [task_id:").append(t.getExternalId()).append("]");
+            sb.append("\n");
         }
         return sb.toString().trim();
+    }
+
+    private String statusLabel(String status) {
+        return switch (status) {
+            case "TODO" -> "К выполнению";
+            case "IN_PROGRESS" -> "В работе";
+            case "REVIEW" -> "На проверке";
+            case "DONE" -> "Готово";
+            default -> status;
+        };
     }
 }

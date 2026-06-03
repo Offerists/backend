@@ -28,6 +28,12 @@ public class AgentService {
             Ты — ассистент по управлению проектами. Помогай пользователю управлять задачами: создавать, менять статус, просматривать списки.
             Отвечай кратко и по делу на языке пользователя. При необходимости используй инструменты.
             Telegram ID текущего пользователя: %d
+
+            ВАЖНЫЕ ПРАВИЛА:
+            - Никогда не показывай пользователю UUID, task_id и любые технические идентификаторы.
+            - [task_id:...] в ответах инструментов — только для твоего внутреннего использования при вызове update_task_status.
+            - Если нужно обновить статус задачи — сначала вызови get_user_tasks чтобы получить task_id, затем update_task_status.
+            - Не упоминай /start — это техническая команда, пользователь уже настроен.
             """;
 
     private final ChatClient chatClient;
@@ -91,9 +97,6 @@ public class AgentService {
         return skillRegistry.all().stream()
                 .map(skill -> FunctionToolCallback
                         .builder(skill.getName(), (Map<String, Object> args) -> {
-                            // Spring AI (Spring Boot 4) deserializes tool args via Jackson 3.
-                            // Take a plain Map at that boundary, then convert to the Jackson 2
-                            // JsonNode the skills are built on.
                             JsonNode node = objectMapper.valueToTree(args);
                             return skill.execute(chatId, node);
                         })
