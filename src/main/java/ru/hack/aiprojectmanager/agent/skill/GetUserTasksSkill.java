@@ -21,7 +21,8 @@ import java.util.stream.Stream;
 public class GetUserTasksSkill implements Skill {
 
     private static final JsonNode SCHEMA = SchemaBuilder.object()
-            .optional("name", "string", "Имя или @username участника. Без параметра — задачи текущего пользователя.")
+            .optional("name", "string", "Имя или @username участника. 'me' — мои задачи. Без параметра — все задачи.")
+            .optional("status", "string", "Фильтр по статусу: TODO, IN_PROGRESS, REVIEW, DONE")
             .build();
 
     private final AppUserRepository appUserRepository;
@@ -46,9 +47,11 @@ public class GetUserTasksSkill implements Skill {
 
     @Override
     public String getDescription() {
-        return "Получить задачи. Без параметра — задачи текущего пользователя. "
-                + "С name — задачи конкретного участника по имени или @username. "
-                + "Содержит {tid:...} только для assign_task и update_task_status — не показывай пользователю.";
+        return "Получить задачи. "
+                + "name='me' — задачи текущего пользователя. "
+                + "name=имя/@username — задачи участника. "
+                + "Без параметра — ВСЕ задачи проекта. "
+                + "Содержит {tid:...} только для assign_task и update_task_status.";
     }
 
     @Override
@@ -74,7 +77,11 @@ public class GetUserTasksSkill implements Skill {
         String name = optText(args, "name");
         String targetYougileId;
         if (name == null) {
-            // Без параметра — задачи текущего пользователя
+            // Без параметра — ВСЕ задачи (без фильтра по исполнителю)
+            targetYougileId = null;
+        } else if (name.equalsIgnoreCase("me") || name.equalsIgnoreCase("я")
+                || name.equalsIgnoreCase("мои")) {
+            // "me" — задачи текущего пользователя
             targetYougileId = requester.getYougileUserId();
         } else {
             // По имени или @username — ищем в компании
@@ -101,6 +108,8 @@ public class GetUserTasksSkill implements Skill {
                     .toList();
         }
 
+        String statusFilter = optText(args, "status");
+
         List<Task> tasks = allColumns.stream()
                 .flatMap(col -> {
                     try {
@@ -111,6 +120,7 @@ public class GetUserTasksSkill implements Skill {
                     }
                 })
                 .filter(t -> targetYougileId == null || isAssignedTo(t, targetYougileId))
+                .filter(t -> statusFilter == null || t.getStatus().name().equalsIgnoreCase(statusFilter))
                 .toList();
 
         if (tasks.isEmpty()) {

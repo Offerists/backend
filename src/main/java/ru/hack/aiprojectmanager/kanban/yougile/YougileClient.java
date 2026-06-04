@@ -104,6 +104,7 @@ public class YougileClient {
     private <T> List<T> parseList(JsonNode body, Class<T> type, String path) {
         if (body == null) return List.of();
         JsonNode array = body.isArray() ? body : body.path("content");
+        log.debug("parseList {} → {} items in response", path, array.isArray() ? array.size() : "non-array");
         if (!array.isArray()) {
             log.warn("Unexpected response structure for {}: {}", path, body);
             return List.of();
