@@ -2,8 +2,11 @@ package ru.hack.aiprojectmanager.agent.skill;
 
 import tools.jackson.databind.JsonNode;
 import org.springframework.stereotype.Component;
+import ru.hack.aiprojectmanager.common.Task;
 import ru.hack.aiprojectmanager.common.TaskStatus;
 import ru.hack.aiprojectmanager.kanban.KanbanProvider;
+import ru.hack.aiprojectmanager.storage.AppUser;
+import ru.hack.aiprojectmanager.storage.AppUserRepository;
 
 import java.util.Arrays;
 import java.util.List;
@@ -22,9 +25,11 @@ public class UpdateTaskStatusSkill implements Skill {
             .build();
 
     private final KanbanProvider kanban;
+    private final AppUserRepository appUserRepository;
 
-    public UpdateTaskStatusSkill(KanbanProvider kanban) {
+    public UpdateTaskStatusSkill(KanbanProvider kanban, AppUserRepository appUserRepository) {
         this.kanban = kanban;
+        this.appUserRepository = appUserRepository;
     }
 
     @Override
@@ -53,6 +58,17 @@ public class UpdateTaskStatusSkill implements Skill {
             throw new IllegalArgumentException(
                     "неизвестный статус «" + rawStatus + "», допустимы: " + String.join(", ", STATUSES));
         }
+
+        AppUser user = appUserRepository.findFirstByTelegramId(telegramUserId).orElse(null);
+        if (user != null && "MEMBER".equals(user.getYougileRole())) {
+            Task task = kanban.getTask(telegramUserId, taskId);
+            boolean isOwner = task != null && task.getAssigneeIds() != null
+                    && task.getAssigneeIds().contains(user.getYougileUserId());
+            if (!isOwner) {
+                return "Вы можете изменять статус только своих задач.";
+            }
+        }
+
         kanban.moveTask(telegramUserId, taskId, newStatus);
         return "Статус обновлён";
     }

@@ -10,6 +10,8 @@ import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 import ru.hack.aiprojectmanager.agent.AgentService;
+import ru.hack.aiprojectmanager.storage.AppUser;
+import ru.hack.aiprojectmanager.storage.AppUserRepository;
 import ru.hack.aiprojectmanager.telegram.onboarding.OnboardingService;
 
 @Slf4j
@@ -20,6 +22,7 @@ public class UpdateDispatcher {
     private final AgentService agentService;
     private final BotUserService botUserService;
     private final OnboardingService onboardingService;
+    private final AppUserRepository appUserRepository;
     private final TelegramClient telegramClient;
 
     @Value("${telegram.bot.username}")
@@ -129,6 +132,15 @@ public class UpdateDispatcher {
         if (onboardingService.needsOnboarding(userId)) {
             sendReply(chatId, "Сначала нужно настроить интеграцию — напиши мне в личку /start");
             return;
+        }
+
+        if (chatId < 0) {
+            AppUser user = appUserRepository.findFirstByTelegramId(userId).orElse(null);
+            if (user == null || !"LEAD".equals(user.getYougileRole())) {
+                sendReply(chatId, "Управление задачами в группе доступно только лиду команды. "
+                        + "Пиши мне в личку: @" + botUsername);
+                return;
+            }
         }
 
         sendReply(chatId, agentService.process(chatId, userId, text));

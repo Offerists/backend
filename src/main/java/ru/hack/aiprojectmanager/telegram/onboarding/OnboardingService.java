@@ -183,10 +183,7 @@ public class OnboardingService {
             users.stream()
                     .filter(u -> session.getEmail().equalsIgnoreCase(u.email()))
                     .findFirst()
-                    .ifPresent(u -> {
-                        session.setYougileUserId(u.id());
-                        session.setYougileRole(u.name()); // временно используем name, пока нет поля role
-                    });
+                    .ifPresent(u -> session.setYougileUserId(u.id()));
         } catch (Exception e) {
             log.warn("Could not fetch YouGile user info: {}", e.getMessage());
         }
@@ -234,8 +231,8 @@ public class OnboardingService {
                             .build());
             user.setYougileApiKey(session.getApiKey());
             user.setYougileUserId(session.getYougileUserId());
-            user.setYougileRole(session.getYougileRole());
             user.setYougileCompanyId(session.getCompanyId());
+            user.setYougileRole(resolveRole(telegramUserId, session.getCompanyId()));
             appUserRepository.save(user);
 
             // Сохраняем настройки доски как default
@@ -310,6 +307,13 @@ public class OnboardingService {
               .append(idToName.getOrDefault(entry.getValue(), entry.getValue())).append("»\n");
         }
         return sb.toString().trim();
+    }
+
+    private String resolveRole(Long telegramUserId, String companyId) {
+        boolean isFirst = appUserRepository.findByYougileCompanyId(companyId).stream()
+                .filter(u -> !u.getTelegramId().equals(telegramUserId))
+                .noneMatch(u -> u.getYougileApiKey() != null);
+        return isFirst ? "LEAD" : "MEMBER";
     }
 
     private int parseIndex(String input, int size) {
