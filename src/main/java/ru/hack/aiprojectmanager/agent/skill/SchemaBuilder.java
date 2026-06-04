@@ -26,9 +26,15 @@ class SchemaBuilder {
     }
 
     private SchemaBuilder property(String name, String type, String description, boolean required) {
-        ObjectNode prop = mapper.createObjectNode()
-                .put("type", type)
-                .put("description", description);
+        ObjectNode prop = mapper.createObjectNode().put("description", description);
+        if (required) {
+            prop.put("type", type);
+        } else {
+            // Optional: allow null so Groq strict validation doesn't reject absent params
+            var typeArr = prop.putArray("type");
+            typeArr.add(type);
+            typeArr.add("null");
+        }
         properties.set(name, prop);
 
         if (required) {
