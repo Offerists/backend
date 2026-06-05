@@ -4,59 +4,59 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
-import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
-import org.telegram.telegrambots.meta.generics.TelegramClient;
-import ru.hack.aiprojectmanager.common.TaskStatus;
+import ru.hack.aiprojectmanager.notification.NotificationSender;
+import ru.hack.aiprojectmanager.storage.AppUserRepository;
 import ru.hack.aiprojectmanager.storage.TaskEntity;
 import ru.hack.aiprojectmanager.storage.TaskEntityRepository;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class ReminderScheduler {
 
+    private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("dd.MM в HH:mm");
+
     private final TaskEntityRepository taskRepository;
-    private final TelegramClient telegramClient;
+    private final AppUserRepository appUserRepository;
+    private final NotificationSender notificationSender;
 
-    @Scheduled(cron = "0 0 17 * * *") // каждый день в 17:00
-    public void sendDailyDigest() {
-        List<TaskEntity> activeTasks = taskRepository.findByStatusNot(TaskStatus.DONE);
+    // Каждую минуту проверяем задачи с дедлайном в ближайшие 30 минут
+    @Scheduled(fixedDelay = 60_000)
+    public void sendReminders() {
+        LocalDateTime threshold = LocalDateTime.now().plusMinutes(30);
+        List<TaskEntity> due = taskRepository.findByDeadlineBeforeAndReminderSentAtIsNull(threshold);
+        if (due.isEmpty()) return;
 
-        if (activeTasks.isEmpty()) return;
+        due.forEach(task -> {
+            Long chatId = resolveChatId(task);
+            if (chatId == null) return;
 
-        Map<Long, List<TaskEntity>> byChatId = activeTasks.stream()
-                .collect(Collectors.groupingBy(TaskEntity::getChatId));
+            String text = "⏰ Напоминание: «" + task.getTitle() + "»"
+                    + (task.getDeadline() != null
+                    ? " — дедлайн " + task.getDeadline().format(FMT)
+                    : "");
 
-        byChatId.forEach((chatId, tasks) -> {
-            try {
-                telegramClient.execute(SendMessage.builder()
-                        .chatId(chatId)
-                        .text(formatDigest(tasks))
-                        .build());
-            } catch (TelegramApiException e) {
-                log.error("Failed to send digest to chatId={}: {}", chatId, e.getMessage());
-            }
+            notificationSender.send(chatId, text);
+            task.setReminderSentAt(LocalDateTime.now());
+            taskRepository.save(task);
+            log.info("Reminder sent for task {} to chatId={}", task.getYougileTaskId(), chatId);
         });
     }
 
-    private String formatDigest(List<TaskEntity> tasks) {
-        StringBuilder sb = new StringBuilder("Добрый вечер! Активные задачи на сегодня:\n\n");
-        for (TaskEntity task : tasks) {
-            sb.append("• ").append(task.getTitle());
-            if (task.getDeadline() != null) {
-                sb.append(" (дедлайн: ")
-                        .append(task.getDeadline().format(DateTimeFormatter.ofPattern("dd.MM HH:mm")))
-                        .append(")");
-            }
-            sb.append("\n");
+    private Long resolveChatId(TaskEntity task) {
+        // chatId в TaskEntity = telegramId пользователя (приватный чат)
+        if (task.getChatId() != null) {
+            return task.getChatId();
         }
-        return sb.toString();
+        if (task.getAssigneeId() != null) {
+            return appUserRepository.findById(task.getAssigneeId())
+                    .map(u -> u.getChatId())
+                    .orElse(null);
+        }
+        return null;
     }
 }

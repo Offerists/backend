@@ -27,8 +27,8 @@ public class YougileMapper {
                 .status(columnToStatus(dto.columnId(), board))
                 .assigneeIds(assigneeIds)
                 .assigneeId(assigneeIds.isEmpty() ? null : assigneeIds.getFirst())
-                .deadline(dto.deadline() != null ? toLocalDateTime(dto.deadline()) : null)
-                .startDate(dto.startDate() != null ? toLocalDateTime(dto.startDate()) : null)
+                .deadline(dto.deadlineMillis() != null ? toLocalDateTime(dto.deadlineMillis()) : null)
+                .startDate(dto.startDateMillis() != null ? toLocalDateTime(dto.startDateMillis()) : null)
                 .build();
     }
 
@@ -44,8 +44,9 @@ public class YougileMapper {
                 .title(task.getTitle())
                 .description(task.getDescription())
                 .columnId(statusToColumn(task.getStatus(), board))
-                .deadline(task.getDeadline() != null ? toEpochMillis(task.getDeadline()) : null)
-                .startDate(task.getStartDate() != null ? toEpochMillis(task.getStartDate()) : null)
+                .deadline(YougileTaskRequest.deadlineOf(
+                        task.getDeadline() != null ? toEpochMillis(task.getDeadline()) : null,
+                        task.getStartDate() != null ? toEpochMillis(task.getStartDate()) : null))
                 .assigned(assigned.isEmpty() ? null : assigned)
                 .build();
     }

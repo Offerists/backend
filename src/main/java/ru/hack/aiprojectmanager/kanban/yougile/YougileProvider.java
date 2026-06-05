@@ -11,8 +11,6 @@ import ru.hack.aiprojectmanager.storage.UserBoardSettings;
 import ru.hack.aiprojectmanager.storage.UserBoardSettingsRepository;
 
 import java.util.List;
-import java.util.Objects;
-import java.util.stream.Stream;
 
 @Component
 @RequiredArgsConstructor
@@ -40,16 +38,10 @@ public class YougileProvider implements KanbanProvider {
     @Override
     public List<Task> getTasksByAssignee(Long telegramUserId, String yougileAssigneeId) {
         var ctx = loadContext(telegramUserId);
-        UserBoardSettings board = ctx.board();
-        String apiKey = ctx.user().getYougileApiKey();
-
-        return Stream.of(board.getColumnTodoId(), board.getColumnInProgressId(),
-                        board.getColumnReviewId(), board.getColumnDoneId())
-                .filter(Objects::nonNull)
-                .filter(c -> !c.isBlank())
-                .flatMap(columnId -> client.getTasksByColumn(apiKey, columnId).stream())
-                .filter(dto -> dto.assigned() != null && dto.assigned().contains(yougileAssigneeId))
-                .map(dto -> mapper.toDomain(dto, board))
+        // assignedTo filter — один запрос вместо N по колонкам
+        return client.getTasksByAssignee(ctx.user().getYougileApiKey(), yougileAssigneeId)
+                .stream()
+                .map(dto -> mapper.toDomain(dto, ctx.board()))
                 .toList();
     }
 

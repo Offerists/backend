@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Optional;
 
 public interface UserBoardSettingsRepository extends JpaRepository<UserBoardSettings, Long> {
-
     Optional<UserBoardSettings> findByTelegramIdAndIsDefaultTrue(Long telegramId);
 
     Optional<UserBoardSettings> findByTelegramIdAndBoardId(Long telegramId, String boardId);

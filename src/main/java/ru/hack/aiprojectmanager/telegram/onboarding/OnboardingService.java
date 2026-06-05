@@ -179,11 +179,14 @@ public class OnboardingService {
 
     private void linkYougileUser(Long telegramUserId, OnboardingSession session, String apiKey) {
         try {
-            List<YougileUserDto> users = yougileClient.getUsers(apiKey);
-            users.stream()
-                    .filter(u -> session.getEmail().equalsIgnoreCase(u.email()))
-                    .findFirst()
-                    .ifPresent(u -> session.setYougileUserId(u.id()));
+            // GET /users/me — точный способ получить текущего пользователя по его API-ключу
+            YougileUserDto me = yougileClient.getCurrentUser(apiKey);
+            if (me != null && me.id() != null) {
+                session.setYougileUserId(me.id());
+                // isAdmin = true → роль "LEAD", иначе "MEMBER"
+                session.setYougileRole(Boolean.TRUE.equals(me.isAdmin()) ? "LEAD" : "MEMBER");
+                log.info("YouGile user linked: id={}, isAdmin={}", me.id(), me.isAdmin());
+            }
         } catch (Exception e) {
             log.warn("Could not fetch YouGile user info: {}", e.getMessage());
         }
@@ -232,7 +235,7 @@ public class OnboardingService {
             user.setYougileApiKey(session.getApiKey());
             user.setYougileUserId(session.getYougileUserId());
             user.setYougileCompanyId(session.getCompanyId());
-            user.setYougileRole(resolveRole(telegramUserId, session.getCompanyId()));
+            user.setYougileRole(session.getYougileRole());
             appUserRepository.save(user);
 
             // Сохраняем настройки доски как default
@@ -307,13 +310,6 @@ public class OnboardingService {
               .append(idToName.getOrDefault(entry.getValue(), entry.getValue())).append("»\n");
         }
         return sb.toString().trim();
-    }
-
-    private String resolveRole(Long telegramUserId, String companyId) {
-        boolean isFirst = appUserRepository.findByYougileCompanyId(companyId).stream()
-                .filter(u -> !u.getTelegramId().equals(telegramUserId))
-                .noneMatch(u -> u.getYougileApiKey() != null);
-        return isFirst ? "LEAD" : "MEMBER";
     }
 
     private int parseIndex(String input, int size) {

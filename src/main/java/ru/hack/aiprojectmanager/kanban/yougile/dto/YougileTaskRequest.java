@@ -18,8 +18,21 @@ import java.util.List;
 public class YougileTaskRequest {
     private String title;
     private String columnId;
-    private Long deadline;
-    private Long startDate;
+    private Deadline deadline;       // YouGile требует объект {deadline, withTime}
     private List<String> assigned;  // YouGile API требует UUID array
     private String description;
+
+    @Getter
+    @AllArgsConstructor
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public static class Deadline {
+        private Long deadline;
+        private Long startDate;
+        private Boolean withTime;
+    }
+
+    public static Deadline deadlineOf(Long deadlineMillis, Long startDateMillis) {
+        if (deadlineMillis == null && startDateMillis == null) return null;
+        return new Deadline(deadlineMillis, startDateMillis, false);
+    }
 }

@@ -9,9 +9,21 @@ public record YougileTaskDto(
         String id,
         String title,
         String columnId,
-        Long deadline,
-        Long startDate,
+        Deadline deadline,
         List<String> assigned,
         String description,
+        Boolean completed,
+        Boolean archived,
         Boolean deleted
-) {}
+) {
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Deadline(Long deadline, Long startDate, Boolean withTime) {}
+
+    public Long deadlineMillis() {
+        return deadline != null ? deadline.deadline() : null;
+    }
+
+    public Long startDateMillis() {
+        return deadline != null ? deadline.startDate() : null;
+    }
+}

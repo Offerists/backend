@@ -1,133 +1,92 @@
 package ru.hack.aiprojectmanager.agent.skill;
 
-import tools.jackson.databind.JsonNode;
+import lombok.RequiredArgsConstructor;
+import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import ru.hack.aiprojectmanager.common.Task;
+import ru.hack.aiprojectmanager.common.TaskStatus;
 import ru.hack.aiprojectmanager.kanban.yougile.YougileClient;
 import ru.hack.aiprojectmanager.kanban.yougile.YougileMapper;
 import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileColumnDto;
 import ru.hack.aiprojectmanager.storage.AppUser;
 import ru.hack.aiprojectmanager.storage.AppUserRepository;
-
-import java.util.Locale;
 import ru.hack.aiprojectmanager.storage.UserBoardSettings;
 import ru.hack.aiprojectmanager.storage.UserBoardSettingsRepository;
 
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 import java.util.stream.Stream;
 
 @Component
-public class GetUserTasksSkill implements Skill {
-
-    private static final JsonNode SCHEMA = SchemaBuilder.object()
-            .optional("name", "string", "Имя или @username участника. 'me' — мои задачи. Без параметра — все задачи.")
-            .optional("status", "string", "Фильтр по статусу: TODO, IN_PROGRESS, REVIEW, DONE")
-            .build();
+@RequiredArgsConstructor
+public class GetUserTasksSkill {
 
     private final AppUserRepository appUserRepository;
     private final UserBoardSettingsRepository boardSettingsRepository;
     private final YougileClient yougileClient;
     private final YougileMapper mapper;
 
-    public GetUserTasksSkill(AppUserRepository appUserRepository,
-                              UserBoardSettingsRepository boardSettingsRepository,
-                              YougileClient yougileClient,
-                              YougileMapper mapper) {
-        this.appUserRepository = appUserRepository;
-        this.boardSettingsRepository = boardSettingsRepository;
-        this.yougileClient = yougileClient;
-        this.mapper = mapper;
-    }
+    @Tool(name = "get_user_tasks", description = "Получить задачи. "
+            + "name='me' — мои, name=имя/@username — участника, без name — все. "
+            + "filter: active (по умолчанию), done — завершённые, all — все. "
+            + "ВСЕГДА вызывай заново, не используй кэш из истории.")
+    public String getUserTasks(
+            @Nullable @ToolParam(description = "'me', имя или @username; без параметра — все участники", required = false) String name,
+            @Nullable @ToolParam(description = "active | done | all", required = false) String filter,
+            org.springframework.ai.chat.model.ToolContext ctx) {
 
-    @Override
-    public String getName() {
-        return "get_user_tasks";
-    }
+        Long telegramUserId = (Long) ctx.getContext().get("telegramUserId");
 
-    @Override
-    public String getDescription() {
-        return "Получить задачи. "
-                + "name='me' — задачи текущего пользователя. "
-                + "name=имя/@username — задачи участника. "
-                + "Без параметра — ВСЕ задачи проекта. "
-                + "Содержит {tid:...} только для assign_task и update_task_status.";
-    }
-
-    @Override
-    public JsonNode getParametersSchema() {
-        return SCHEMA;
-    }
-
-    @Override
-    public String execute(Long telegramUserId, JsonNode args) {
         AppUser requester = appUserRepository.findFirstByTelegramId(telegramUserId).orElse(null);
-        if (requester == null || requester.getYougileApiKey() == null) {
-            return "Активных задач нет";
-        }
+        if (requester == null || requester.getYougileApiKey() == null) return "Активных задач нет";
+
         UserBoardSettings board = boardSettingsRepository
                 .findByTelegramIdAndIsDefaultTrue(telegramUserId).orElse(null);
-        if (board == null) {
-            return "Активных задач нет";
-        }
+        if (board == null) return "Активных задач нет";
 
         String apiKey = requester.getYougileApiKey();
+        String targetYougileId = resolveTarget(requester, name, telegramUserId);
+        String mode = filter != null ? filter.toLowerCase(Locale.ROOT) : "active";
 
-        // Определяем чьи задачи искать
-        String name = optText(args, "name");
-        String targetYougileId;
-        if (name == null) {
-            // Без параметра — ВСЕ задачи (без фильтра по исполнителю)
-            targetYougileId = null;
-        } else if (name.equalsIgnoreCase("me") || name.equalsIgnoreCase("я")
-                || name.equalsIgnoreCase("мои")) {
-            // "me" — задачи текущего пользователя
-            targetYougileId = requester.getYougileUserId();
+        List<Task> tasks;
+        if (targetYougileId != null) {
+            // Один запрос с assignedTo — намного эффективнее чем N запросов по колонкам
+            tasks = yougileClient.getTasksByAssignee(apiKey, targetYougileId)
+                    .stream()
+                    .map(dto -> mapper.toDomain(dto, board))
+                    .filter(t -> switch (mode) {
+                        case "done" -> t.getStatus() == TaskStatus.DONE;
+                        case "all"  -> true;
+                        default     -> t.getStatus() != TaskStatus.DONE;
+                    })
+                    .toList();
         } else {
-            // По имени или @username — ищем в компании
-            String query = name.startsWith("@") ? name.substring(1).toLowerCase() : name.toLowerCase();
-            List<AppUser> candidates = requester.getYougileCompanyId() != null
-                    ? appUserRepository.findByYougileCompanyId(requester.getYougileCompanyId())
-                    : List.of();
-            targetYougileId = candidates.stream()
-                    .filter(u -> (u.getUsername() != null && u.getUsername().toLowerCase().contains(query))
-                            || (u.getFullName() != null && u.getFullName().toLowerCase().contains(query)))
-                    .map(AppUser::getYougileUserId)
-                    .filter(id -> id != null)
-                    .findFirst()
-                    .orElse(null);
-        }
-
-        // Грузим ВСЕ колонки доски
-        List<YougileColumnDto> allColumns = yougileClient.getColumns(apiKey, board.getBoardId());
-        if (allColumns.isEmpty()) {
-            allColumns = Stream.of(board.getColumnTodoId(), board.getColumnInProgressId(),
-                            board.getColumnReviewId(), board.getColumnDoneId())
-                    .filter(id -> id != null)
-                    .map(id -> new YougileColumnDto(id, id))
+            // Все задачи — нужно перебрать по колонкам
+            List<YougileColumnDto> columns = yougileClient.getColumns(apiKey, board.getBoardId());
+            if (columns.isEmpty()) {
+                columns = Stream.of(board.getColumnTodoId(), board.getColumnInProgressId(),
+                                board.getColumnReviewId(), board.getColumnDoneId())
+                        .filter(Objects::nonNull).map(id -> new YougileColumnDto(id, id)).toList();
+            }
+            tasks = yougileClient
+                    .getTasksByColumns(apiKey, columns.stream().map(YougileColumnDto::id).toList())
+                    .stream()
+                    .map(dto -> mapper.toDomain(dto, board))
+                    .filter(t -> switch (mode) {
+                        case "done" -> t.getStatus() == TaskStatus.DONE;
+                        case "all"  -> true;
+                        default     -> t.getStatus() != TaskStatus.DONE;
+                    })
                     .toList();
         }
 
-        String statusFilter = optText(args, "status");
+        if (tasks.isEmpty()) return "Активных задач нет";
 
-        List<Task> tasks = allColumns.stream()
-                .flatMap(col -> {
-                    try {
-                        return yougileClient.getTasksByColumn(apiKey, col.id()).stream()
-                                .map(dto -> mapper.toDomain(dto, board));
-                    } catch (Exception ignored) {
-                        return Stream.empty();
-                    }
-                })
-                .filter(t -> targetYougileId == null || isAssignedTo(t, targetYougileId))
-                .filter(t -> statusFilter == null || t.getStatus().name().equalsIgnoreCase(statusFilter))
-                .toList();
-
-        if (tasks.isEmpty()) {
-            return "Активных задач нет";
-        }
-
-        StringBuilder sb = new StringBuilder();
+        var sb = new StringBuilder();
         for (int i = 0; i < tasks.size(); i++) {
             Task t = tasks.get(i);
             sb.append(i + 1).append(". «").append(t.getTitle()).append("» — ")
@@ -135,25 +94,39 @@ public class GetUserTasksSkill implements Skill {
             if (t.getDeadline() != null) {
                 sb.append(", до ").append(t.getDeadline().format(DateTimeFormatter.ofPattern("dd.MM.yyyy")));
             }
-            // Внутренний идентификатор — только для инструментов, скрыт от пользователя
-            sb.append(" {tid:").append(t.getExternalId()).append("}");
-            sb.append("\n");
+            sb.append(" {tid:").append(t.getExternalId()).append("}\n");
         }
         return sb.toString().trim();
     }
 
-    private boolean isAssignedTo(Task task, String yougileUserId) {
-        return (task.getAssigneeId() != null && task.getAssigneeId().equals(yougileUserId))
-                || (task.getAssigneeIds() != null && task.getAssigneeIds().contains(yougileUserId));
+    private String resolveTarget(AppUser requester, String name, Long telegramUserId) {
+        if (name == null) return null;
+        if (name.equalsIgnoreCase("me") || name.equalsIgnoreCase("я")) {
+            return requester.getYougileUserId();
+        }
+        String q = name.startsWith("@") ? name.substring(1).toLowerCase() : name.toLowerCase();
+        List<AppUser> candidates = requester.getYougileCompanyId() != null
+                ? appUserRepository.findByYougileCompanyId(requester.getYougileCompanyId())
+                : List.of();
+        return candidates.stream()
+                .filter(u -> (u.getUsername() != null && u.getUsername().toLowerCase().contains(q))
+                        || (u.getFullName() != null && u.getFullName().toLowerCase().contains(q)))
+                .map(AppUser::getYougileUserId).filter(Objects::nonNull)
+                .findFirst().orElse(null);
     }
 
-    private String statusLabel(String status) {
-        return switch (status) {
+    private boolean isAssignedTo(Task t, String id) {
+        return (t.getAssigneeId() != null && t.getAssigneeId().equals(id))
+                || (t.getAssigneeIds() != null && t.getAssigneeIds().contains(id));
+    }
+
+    private String statusLabel(String s) {
+        return switch (s) {
             case "TODO" -> "К выполнению";
             case "IN_PROGRESS" -> "В работе";
             case "REVIEW" -> "На проверке";
             case "DONE" -> "Готово";
-            default -> status;
+            default -> s;
         };
     }
 }

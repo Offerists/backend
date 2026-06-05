@@ -1,109 +1,105 @@
 package ru.hack.aiprojectmanager.agent.skill;
 
-import tools.jackson.databind.JsonNode;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import ru.hack.aiprojectmanager.common.Task;
 import ru.hack.aiprojectmanager.common.TaskStatus;
 import ru.hack.aiprojectmanager.kanban.KanbanProvider;
+import ru.hack.aiprojectmanager.kanban.yougile.YougileClient;
+import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileUserDto;
 import ru.hack.aiprojectmanager.storage.AppUser;
 import ru.hack.aiprojectmanager.storage.AppUserRepository;
 
-import java.util.List;
-
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Locale;
 
 @Slf4j
 @Component
-public class CreateTaskSkill implements Skill {
-
-    private static final JsonNode SCHEMA = SchemaBuilder.object()
-            .required("title", "string", "Название задачи")
-            .optional("description", "string", "Описание задачи")
-            .optional("assignee_telegram_id", "string", "Telegram ID исполнителя")
-            .optional("deadline", "string", "Дедлайн в формате ISO-8601 (yyyy-MM-ddTHH:mm)")
-            .build();
+@RequiredArgsConstructor
+public class CreateTaskSkill {
 
     private final KanbanProvider kanban;
     private final AppUserRepository appUserRepository;
+    private final YougileClient yougileClient;
 
-    public CreateTaskSkill(KanbanProvider kanban, AppUserRepository appUserRepository) {
-        this.kanban = kanban;
-        this.appUserRepository = appUserRepository;
-    }
+    @Tool(name = "create_task", description = "Создать новую задачу на канбан-доске")
+    public String createTask(
+            @ToolParam(description = "Название задачи") String title,
+            @Nullable @ToolParam(description = "Описание задачи", required = false) String description,
+            @Nullable @ToolParam(description = "Исполнитель: имя, @username или telegram_id", required = false) String assignee,
+            @Nullable @ToolParam(description = "Дедлайн в формате yyyy-MM-ddTHH:mm", required = false) String deadline,
+            org.springframework.ai.chat.model.ToolContext ctx) {
 
-    @Override
-    public String getName() {
-        return "create_task";
-    }
+        Long telegramUserId = (Long) ctx.getContext().get("telegramUserId");
+        String yougileAssigneeId = resolveAssignee(telegramUserId, assignee);
 
-    @Override
-    public String getDescription() {
-        return "Создать новую задачу на канбан-доске";
-    }
+        boolean assigneeRequested = assignee != null && !assignee.isBlank();
+        boolean assigneeResolved = yougileAssigneeId != null;
 
-    @Override
-    public JsonNode getParametersSchema() {
-        return SCHEMA;
-    }
-
-    @Override
-    public String execute(Long telegramUserId, JsonNode args) {
         Task task = Task.builder()
-                .title(requireText(args, "title"))
-                .description(textOrNull(args, "description"))
-                .assigneeId(resolveAssignee(telegramUserId, args))
+                .title(title)
+                .description(description)
+                .assigneeId(yougileAssigneeId)
                 .status(TaskStatus.TODO)
-                .deadline(parseDeadline(args))
+                .deadline(parseDeadline(deadline))
                 .build();
 
         kanban.createTask(telegramUserId, task);
-        return "Задача «" + task.getTitle() + "» создана";
+
+        if (assigneeRequested && !assigneeResolved) {
+            return "⚠️ Задача «" + title + "» создана БЕЗ исполнителя. "
+                    + "Участник «" + assignee + "» не найден ни в системе, ни в YouGile. "
+                    + "Сообщи пользователю что исполнитель не назначен.";
+        }
+        return "Задача «" + title + "» создана";
     }
 
-    private String resolveAssignee(Long telegramUserId, JsonNode args) {
-        String raw = textOrNull(args, "assignee_telegram_id");
-        if (raw == null) return null;
+    private String resolveAssignee(Long telegramUserId, String query) {
+        if (query == null || query.isBlank()) return null;
 
-        // Числовой telegramId
+        // 1. Числовой telegram_id → ищем в AppUser
         try {
-            long telegramId = Long.parseLong(raw);
-            return appUserRepository.findFirstByTelegramId(telegramId)
-                    .map(AppUser::getYougileUserId)
-                    .orElse(null);
+            long id = Long.parseLong(query);
+            return appUserRepository.findFirstByTelegramId(id)
+                    .map(AppUser::getYougileUserId).orElse(null);
         } catch (NumberFormatException ignored) {}
 
-        // Username (@smurphi или smurphi) или имя — ищем по всем известным пользователям компании
+        // 2. По имени/username в AppUser
         AppUser requester = appUserRepository.findFirstByTelegramId(telegramUserId).orElse(null);
-        if (requester == null) return null;
+        if (requester != null) {
+            String q = query.startsWith("@") ? query.substring(1).toLowerCase() : query.toLowerCase();
+            List<AppUser> candidates = requester.getYougileCompanyId() != null
+                    ? appUserRepository.findByYougileCompanyId(requester.getYougileCompanyId())
+                    : List.of();
+            String fromDb = candidates.stream()
+                    .filter(u -> matches(u, q))
+                    .map(AppUser::getYougileUserId)
+                    .filter(id -> id != null)
+                    .findFirst().orElse(null);
+            if (fromDb != null) return fromDb;
 
-        String query = raw.startsWith("@") ? raw.substring(1).toLowerCase() : raw.toLowerCase();
-        List<AppUser> candidates = requester.getYougileCompanyId() != null
-                ? appUserRepository.findByYougileCompanyId(requester.getYougileCompanyId())
-                : List.of();
-
-        return candidates.stream()
-                .filter(u -> matchesQuery(u, query))
-                .map(AppUser::getYougileUserId)
-                .filter(id -> id != null)
-                .findFirst()
-                .orElse(null);
+            // 3. Fallback: ищем прямо в YouGile по realName
+            if (requester.getYougileApiKey() != null) {
+                return yougileClient.findUsersByName(requester.getYougileApiKey(), q)
+                        .stream().map(YougileUserDto::id).findFirst().orElse(null);
+            }
+        }
+        return null;
     }
 
-    private boolean matchesQuery(AppUser u, String query) {
-        return (u.getUsername() != null && u.getUsername().toLowerCase().contains(query))
-                || (u.getFullName() != null && u.getFullName().toLowerCase().contains(query));
+    private boolean matches(AppUser u, String q) {
+        return (u.getUsername() != null && u.getUsername().toLowerCase(Locale.ROOT).contains(q))
+                || (u.getFullName() != null && u.getFullName().toLowerCase(Locale.ROOT).contains(q));
     }
 
-    private String textOrNull(JsonNode args, String field) {
-        JsonNode node = args.get(field);
-        return (node != null && !node.isNull() && !node.asText().isBlank()) ? node.asText() : null;
-    }
-
-    private LocalDateTime parseDeadline(JsonNode args) {
-        String raw = textOrNull(args, "deadline");
-        if (raw == null) return null;
+    private LocalDateTime parseDeadline(String raw) {
+        if (raw == null || raw.isBlank()) return null;
         try {
             return LocalDateTime.parse(raw, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
         } catch (Exception e) {
