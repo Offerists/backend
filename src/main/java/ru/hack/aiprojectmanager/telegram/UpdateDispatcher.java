@@ -31,6 +31,9 @@ public class UpdateDispatcher {
     private static final Pattern TELEMOST_URL =
             Pattern.compile("https://telemost\\.yandex\\.ru/j/[\\w%-]+");
 
+    private static final Pattern TASK_EVENT_PATTERN = Pattern.compile(
+            "(?i)(готово|сделал[аи]?|завершил[аи]?|выполнил[аи]?|закончил[аи]?|беру|взял[аи]?|возьму|выполнено|завершено)");
+
     private final AgentService agentService;
     private final GroupContextService groupContextService;
     private final BotUserService botUserService;
@@ -73,19 +76,29 @@ public class UpdateDispatcher {
         Long chatId = message.getChatId();
         boolean isGroupChat = chatId < 0;
 
+        // Автодетект ссылки на Telemost — работает и в личке, и в группе
+        Matcher telemost = TELEMOST_URL.matcher(text);
+        if (telemost.find()) {
+            recordingService.startRecording(chatId, telemost.group());
+            return;
+        }
+
         if (isGroupChat) {
             // Молча сохраняем все сообщения группы для rolling summary
             String senderName = senderName(message.getFrom());
             groupContextService.saveMessage(chatId, message.getFrom().getId(), senderName, text);
 
-            // Автодетект ссылки на Telemost — запускаем запись без упоминания бота
-            Matcher telemost = TELEMOST_URL.matcher(text);
-            if (telemost.find()) {
-                recordingService.startRecording(chatId, telemost.group());
+            if (!isAddressedToBot(text)) {
+                Long senderId = message.getFrom().getId();
+                if (TASK_EVENT_PATTERN.matcher(text).find()
+                        && appUserRepository.findFirstByTelegramId(senderId).isPresent()) {
+                    String autonomousReply = agentService.processGroupAutonomous(chatId, senderId, text);
+                    if (autonomousReply != null && !autonomousReply.startsWith("SKIP")) {
+                        sendReply(chatId, "🤖 " + autonomousReply);
+                    }
+                }
                 return;
             }
-
-            if (!isAddressedToBot(text)) return;
         }
 
         String cleanText = isGroupChat ? removeMyMention(text) : text;
@@ -201,15 +214,6 @@ public class UpdateDispatcher {
         if (onboardingService.needsOnboarding(userId)) {
             sendReply(chatId, "Сначала нужно настроить интеграцию — напиши мне в личку /start");
             return;
-        }
-
-        if (chatId < 0) {
-            AppUser user = appUserRepository.findFirstByTelegramId(userId).orElse(null);
-            if (user == null || !"LEAD".equals(user.getYougileRole())) {
-                sendReply(chatId, "Управление задачами в группе доступно только лиду команды. "
-                        + "Пиши мне в личку: @" + botUsername);
-                return;
-            }
         }
 
         sendReply(chatId, agentService.process(chatId, userId, text));

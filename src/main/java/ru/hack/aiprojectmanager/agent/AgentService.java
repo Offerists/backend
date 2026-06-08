@@ -144,6 +144,25 @@ public class AgentService {
         Сообщения участников в формате «Имя: текст».
         """;
 
+    private static final String GROUP_AUTONOMOUS_SYSTEM_PROMPT = """
+        Ты мониторишь групповой чат команды. Участник написал сообщение НЕ обращаясь к боту.
+        Telegram ID этого участника: %d.
+
+        Твоя задача: определить, явно ли сообщает ли участник о выполнении, взятии или смене статуса задачи.
+
+        Действуй ТОЛЬКО при абсолютной уверенности:
+        • «Закончил задачу X» → обнови статус X на DONE
+        • «Беру задачу по авторизации» → назначь эту задачу на участника
+        • «PR по Y смержен, готово» → обнови статус Y
+
+        МОЛЧИ (ответь ТОЛЬКО словом SKIP) если:
+        • это обсуждение, вопрос, планирование
+        • задача не идентифицирована однозначно
+        • любые сомнения
+
+        Если действуешь — одна короткая фраза на русском. Если нет — SKIP.
+        """;
+
     private final ChatClient chatClient;
     private final MessageHistoryRepository historyRepository;
     private final AppUserRepository appUserRepository;
@@ -167,6 +186,32 @@ public class AgentService {
     void init() {
         leadTools = new Object[]{createTask, findTask, getUserTasks, updateTaskStatus, assignTask, setReminder, findUser, suggestAssignee, scheduleMeeting, switchBoard};
         memberTools = new Object[]{getUserTasks, updateTaskStatus, findUser, switchBoard};
+    }
+
+    public String processGroupAutonomous(Long chatId, Long userId, String text) {
+        AppUser user = appUserRepository.findFirstByTelegramId(userId).orElse(null);
+        boolean isLead = user != null && "LEAD".equalsIgnoreCase(user.getYougileRole());
+        Object[] tools = isLead ? leadTools : memberTools;
+
+        String systemPrompt = GROUP_AUTONOMOUS_SYSTEM_PROMPT.formatted(userId)
+                + GROUP_ADDENDUM + groupContextService.buildContextBlock(chatId);
+
+        try {
+            String reply = chatClient.prompt()
+                    .system(systemPrompt)
+                    .user(text)
+                    .tools(tools)
+                    .toolContext(Map.of("telegramUserId", userId, "chatId", chatId))
+                    .call()
+                    .content();
+            if (reply != null && !reply.startsWith("SKIP")) {
+                saveHistory(chatId, userId, text, reply, true);
+            }
+            return reply;
+        } catch (Exception e) {
+            log.warn("Autonomous group event processing failed: {}", e.getMessage());
+            return "SKIP";
+        }
     }
 
     public String process(Long chatId, Long telegramUserId, String userMessage) {

@@ -31,6 +31,8 @@ services:
       OPENAI_LOG: debug
       TELEMOST_IMAGE: ${TELEMOST_IMAGE}
       TELEMOST_OUTPUT_DIR: ${TELEMOST_OUTPUT_DIR}
+    group_add:
+      - "0"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${TELEMOST_OUTPUT_DIR}:${TELEMOST_OUTPUT_DIR}
