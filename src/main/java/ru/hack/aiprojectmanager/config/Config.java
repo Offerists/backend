@@ -2,6 +2,7 @@ package ru.hack.aiprojectmanager.config;
 
 import tools.jackson.databind.ObjectMapper;
 import liquibase.integration.spring.SpringLiquibase;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -13,6 +14,11 @@ public class Config {
     @Bean
     public ObjectMapper objectMapper() {
         return new ObjectMapper();
+    }
+
+    @Bean
+    public ChatClient chatClient(ChatClient.Builder builder) {
+        return builder.build();
     }
 
     @Bean

@@ -4,8 +4,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ru.hack.aiprojectmanager.storage.AppUser;
-import ru.hack.aiprojectmanager.storage.AppUserRepository;
+import ru.hack.aiprojectmanager.user.AppUser;
+import ru.hack.aiprojectmanager.user.AppUserRepository;
 
 @Slf4j
 @Service

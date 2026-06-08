@@ -29,6 +29,11 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME}
       OPENAI_LOG: debug
+      TELEMOST_IMAGE: ${TELEMOST_IMAGE:-telemost-recorder}
+      TELEMOST_OUTPUT_DIR: ${TELEMOST_OUTPUT_DIR:-/tmp/telemost}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${TELEMOST_OUTPUT_DIR:-/tmp/telemost}:${TELEMOST_OUTPUT_DIR:-/tmp/telemost}
     networks:
       - internal
 

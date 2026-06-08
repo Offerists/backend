@@ -4,7 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
-import ru.hack.aiprojectmanager.common.TaskStatus;
+import ru.hack.aiprojectmanager.agent.AgentContextService;
+import ru.hack.aiprojectmanager.task.TaskStatus;
 import ru.hack.aiprojectmanager.kanban.KanbanProvider;
 
 @Component
@@ -12,6 +13,7 @@ import ru.hack.aiprojectmanager.kanban.KanbanProvider;
 public class UpdateTaskStatusSkill {
 
     private final KanbanProvider kanban;
+    private final AgentContextService agentContextService;
 
     @Tool(name = "update_task_status", description = "Переместить задачу в другой статус. task_id из find_task или get_user_tasks.")
     public String updateTaskStatus(
@@ -20,6 +22,7 @@ public class UpdateTaskStatusSkill {
             org.springframework.ai.chat.model.ToolContext ctx) {
         Long telegramUserId = (Long) ctx.getContext().get("telegramUserId");
         kanban.moveTask(telegramUserId, taskId, TaskStatus.valueOf(status));
+        agentContextService.rememberStatus(telegramUserId, taskId, status);
         return "Статус обновлён";
     }
 }

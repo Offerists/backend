@@ -5,13 +5,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
-import ru.hack.aiprojectmanager.common.Task;
+import ru.hack.aiprojectmanager.agent.AgentContextService;
+import ru.hack.aiprojectmanager.task.Task;
 import ru.hack.aiprojectmanager.kanban.KanbanProvider;
 import ru.hack.aiprojectmanager.kanban.yougile.YougileClient;
 import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileUserDto;
 import ru.hack.aiprojectmanager.notification.NotificationSender;
-import ru.hack.aiprojectmanager.storage.AppUser;
-import ru.hack.aiprojectmanager.storage.AppUserRepository;
+import ru.hack.aiprojectmanager.user.AppUser;
+import ru.hack.aiprojectmanager.user.AppUserRepository;
 
 import java.util.List;
 import java.util.Locale;
@@ -25,6 +26,7 @@ public class AssignTaskSkill {
     private final AppUserRepository appUserRepository;
     private final NotificationSender notificationSender;
     private final YougileClient yougileClient;
+    private final AgentContextService agentContextService;
 
     @Tool(name = "assign_task", description = "Назначить исполнителя на существующую задачу. task_id из find_task.")
     public String assignTask(
@@ -54,10 +56,11 @@ public class AssignTaskSkill {
                 .build();
 
         kanban.updateTask(telegramUserId, taskId, updated);
-        notifyAssignee(target, current.getTitle(), telegramUserId);
-
         String displayName = target != null && target.getFullName() != null
                 ? target.getFullName() : assignee;
+        agentContextService.rememberTask(telegramUserId, taskId, current.getTitle());
+        agentContextService.rememberAssignee(telegramUserId, yougileId, displayName);
+        notifyAssignee(target, current.getTitle(), telegramUserId);
         return "Задача «" + current.getTitle() + "» назначена на " + displayName + ".";
     }
 

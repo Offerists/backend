@@ -6,8 +6,8 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
-import ru.hack.aiprojectmanager.storage.TaskEntity;
-import ru.hack.aiprojectmanager.storage.TaskEntityRepository;
+import ru.hack.aiprojectmanager.task.TaskEntity;
+import ru.hack.aiprojectmanager.task.TaskEntityRepository;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -35,9 +35,9 @@ public class SetReminderSkill {
             return "Неверный формат времени. Используй yyyy-MM-ddTHH:mm";
         }
 
-        TaskEntity task = taskEntityRepository.findByYougileTaskIdAndChatId(taskId, telegramUserId)
+        TaskEntity task = taskEntityRepository.findByYougileTaskIdAndTelegramId(taskId, telegramUserId)
                 .orElseGet(() -> TaskEntity.builder()
-                        .yougileTaskId(taskId).chatId(telegramUserId)
+                        .yougileTaskId(taskId).telegramId(telegramUserId)
                         .title(title != null ? title : taskId).build());
 
         task.setDeadline(time);

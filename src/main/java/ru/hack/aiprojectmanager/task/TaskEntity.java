@@ -1,4 +1,4 @@
-package ru.hack.aiprojectmanager.storage;
+package ru.hack.aiprojectmanager.task;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -14,7 +14,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import ru.hack.aiprojectmanager.common.TaskStatus;
+import ru.hack.aiprojectmanager.task.TaskStatus;
 
 import java.time.LocalDateTime;
 
@@ -34,9 +34,9 @@ public class TaskEntity {
     private String yougileTaskId;
 
     @Column(nullable = false)
-    private Long chatId;
+    private Long telegramId;
 
-    private Long assigneeId;
+    private String yougileUserId;
 
     @Column(nullable = false)
     private String title;

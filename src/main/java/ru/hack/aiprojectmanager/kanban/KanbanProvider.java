@@ -1,7 +1,7 @@
 package ru.hack.aiprojectmanager.kanban;
 
-import ru.hack.aiprojectmanager.common.Task;
-import ru.hack.aiprojectmanager.common.TaskStatus;
+import ru.hack.aiprojectmanager.task.Task;
+import ru.hack.aiprojectmanager.task.TaskStatus;
 
 import java.util.List;
 

@@ -6,13 +6,14 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
-import ru.hack.aiprojectmanager.common.Task;
-import ru.hack.aiprojectmanager.common.TaskStatus;
+import ru.hack.aiprojectmanager.agent.AgentContextService;
+import ru.hack.aiprojectmanager.task.Task;
+import ru.hack.aiprojectmanager.task.TaskStatus;
 import ru.hack.aiprojectmanager.kanban.KanbanProvider;
 import ru.hack.aiprojectmanager.kanban.yougile.YougileClient;
 import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileUserDto;
-import ru.hack.aiprojectmanager.storage.AppUser;
-import ru.hack.aiprojectmanager.storage.AppUserRepository;
+import ru.hack.aiprojectmanager.user.AppUser;
+import ru.hack.aiprojectmanager.user.AppUserRepository;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -27,6 +28,7 @@ public class CreateTaskSkill {
     private final KanbanProvider kanban;
     private final AppUserRepository appUserRepository;
     private final YougileClient yougileClient;
+    private final AgentContextService agentContextService;
 
     @Tool(name = "create_task", description = "Создать новую задачу на канбан-доске")
     public String createTask(
@@ -50,7 +52,8 @@ public class CreateTaskSkill {
                 .deadline(parseDeadline(deadline))
                 .build();
 
-        kanban.createTask(telegramUserId, task);
+        String createdId = kanban.createTask(telegramUserId, task);
+        agentContextService.rememberTask(telegramUserId, createdId, title);
 
         if (assigneeRequested && !assigneeResolved) {
             return "⚠️ Задача «" + title + "» создана БЕЗ исполнителя. "

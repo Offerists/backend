@@ -1,4 +1,4 @@
-package ru.hack.aiprojectmanager.storage;
+package ru.hack.aiprojectmanager.kanban;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -32,6 +32,8 @@ public class UserBoardSettings {
 
     @Column(nullable = false)
     private String boardId;
+
+    private String boardName;
 
     private String columnTodoId;
     private String columnInProgressId;

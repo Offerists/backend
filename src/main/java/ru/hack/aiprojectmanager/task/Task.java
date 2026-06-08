@@ -1,4 +1,4 @@
-package ru.hack.aiprojectmanager.common;
+package ru.hack.aiprojectmanager.task;
 
 import lombok.*;
 

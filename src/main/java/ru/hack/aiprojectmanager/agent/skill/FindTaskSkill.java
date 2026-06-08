@@ -5,14 +5,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
-import ru.hack.aiprojectmanager.common.Task;
+import ru.hack.aiprojectmanager.agent.AgentContextService;
+import ru.hack.aiprojectmanager.task.Task;
 import ru.hack.aiprojectmanager.kanban.yougile.YougileClient;
 import ru.hack.aiprojectmanager.kanban.yougile.YougileMapper;
 import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileColumnDto;
-import ru.hack.aiprojectmanager.storage.AppUser;
-import ru.hack.aiprojectmanager.storage.AppUserRepository;
-import ru.hack.aiprojectmanager.storage.UserBoardSettings;
-import ru.hack.aiprojectmanager.storage.UserBoardSettingsRepository;
+import ru.hack.aiprojectmanager.user.AppUser;
+import ru.hack.aiprojectmanager.user.AppUserRepository;
+import ru.hack.aiprojectmanager.kanban.UserBoardSettings;
+import ru.hack.aiprojectmanager.kanban.UserBoardSettingsRepository;
 
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -29,6 +30,7 @@ public class FindTaskSkill {
     private final UserBoardSettingsRepository boardSettingsRepository;
     private final YougileClient yougileClient;
     private final YougileMapper mapper;
+    private final AgentContextService agentContextService;
 
     @Tool(name = "find_task", description = "Найти задачи по ключевому слову. "
             + "Используй перед созданием (без слова 'новую') и перед сменой статуса. "
@@ -62,6 +64,11 @@ public class FindTaskSkill {
                 .toList();
 
         if (found.isEmpty()) return "Задачи с «" + keyword + "» не найдено.";
+
+        if (found.size() == 1) {
+            Task t = found.getFirst();
+            agentContextService.rememberTask(telegramUserId, t.getExternalId(), t.getTitle());
+        }
 
         var sb = new StringBuilder();
         for (Task t : found) {

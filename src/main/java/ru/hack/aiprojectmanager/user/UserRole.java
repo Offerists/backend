@@ -1,4 +1,4 @@
-package ru.hack.aiprojectmanager.storage;
+package ru.hack.aiprojectmanager.user;
 
 public enum UserRole {
     LEAD, MEMBER

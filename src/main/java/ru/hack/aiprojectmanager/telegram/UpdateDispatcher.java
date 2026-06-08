@@ -4,29 +4,46 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.telegram.telegrambots.meta.api.methods.GetFile;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
+import org.telegram.telegrambots.meta.api.objects.User;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 import ru.hack.aiprojectmanager.agent.AgentService;
-import ru.hack.aiprojectmanager.storage.AppUser;
-import ru.hack.aiprojectmanager.storage.AppUserRepository;
+import ru.hack.aiprojectmanager.agent.GroupContextService;
+import ru.hack.aiprojectmanager.stt.SttProvider;
+import ru.hack.aiprojectmanager.telemost.RecordingService;
 import ru.hack.aiprojectmanager.telegram.onboarding.OnboardingService;
+import ru.hack.aiprojectmanager.user.AppUser;
+import ru.hack.aiprojectmanager.user.AppUserRepository;
+
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class UpdateDispatcher {
 
+    private static final Pattern TELEMOST_URL =
+            Pattern.compile("https://telemost\\.yandex\\.ru/j/[\\w%-]+");
+
     private final AgentService agentService;
+    private final GroupContextService groupContextService;
     private final BotUserService botUserService;
     private final OnboardingService onboardingService;
     private final AppUserRepository appUserRepository;
     private final TelegramClient telegramClient;
+    private final SttProvider sttProvider;
+    private final RecordingService recordingService;
 
     @Value("${telegram.bot.username}")
     private String botUsername;
+
+    @Value("${telegram.bot.token}")
+    private String botToken;
 
     public void dispatch(Update update) throws TelegramApiException {
         if (update.hasMessage()) {
@@ -41,32 +58,34 @@ public class UpdateDispatcher {
         }
     }
 
-    private void sendGroupWelcome(Long chatId) throws TelegramApiException {
-        sendReply(chatId, """
-                Привет! Я бот для управления задачами YouGile 👋
-
-                Чтобы начать работу, каждый участник должен зарегистрироваться:
-                1. Найдите меня в Telegram: @""" + botUsername + """
-
-                2. Напишите мне /start в личных сообщениях
-                3. Введите логин и пароль от YouGile
-
-                После регистрации вы сможете управлять задачами прямо из этого чата — просто напишите мне @""" + botUsername + " и ваш запрос.");
-    }
-
     private void handleMessage(Message message) throws TelegramApiException {
         String text = message.getText();
+
+        if (text == null && message.hasVoice()) {
+            text = transcribeVoice(message);
+            if (text == null || text.isBlank()) return;
+        }
+
         if (text == null) return;
 
         Long chatId = message.getChatId();
         boolean isGroupChat = chatId < 0;
 
-        // В группе реагируем только на команды и @упоминания
-        if (isGroupChat && !isAddressedToBot(text)) {
-            return;
+        if (isGroupChat) {
+            // Молча сохраняем все сообщения группы для rolling summary
+            String senderName = senderName(message.getFrom());
+            groupContextService.saveMessage(chatId, message.getFrom().getId(), senderName, text);
+
+            // Автодетект ссылки на Telemost — запускаем запись без упоминания бота
+            Matcher telemost = TELEMOST_URL.matcher(text);
+            if (telemost.find()) {
+                recordingService.startRecording(chatId, telemost.group());
+                return;
+            }
+
+            if (!isAddressedToBot(text)) return;
         }
 
-        // В группе убираем @username из текста перед обработкой
         String cleanText = isGroupChat ? removeMyMention(text) : text;
 
         try {
@@ -83,6 +102,30 @@ public class UpdateDispatcher {
         }
     }
 
+    private String transcribeVoice(Message message) {
+        try {
+            String fileId = message.getVoice().getFileId();
+            org.telegram.telegrambots.meta.api.objects.File fileInfo = telegramClient.execute(new GetFile(fileId));
+            String downloadUrl = "https://api.telegram.org/file/bot" + botToken + "/" + fileInfo.getFilePath();
+            byte[] audio = org.springframework.web.client.RestClient.create()
+                    .get().uri(downloadUrl).retrieve().body(byte[].class);
+            if (audio == null) return null;
+            return sttProvider.transcribe(audio, "voice.ogg");
+        } catch (Exception e) {
+            log.warn("Voice transcription failed for chatId={}: {}", message.getChatId(), e.getMessage());
+            return null;
+        }
+    }
+
+    private String senderName(User from) {
+        if (from.getFirstName() != null && from.getLastName() != null) {
+            return from.getFirstName() + " " + from.getLastName();
+        }
+        if (from.getFirstName() != null) return from.getFirstName();
+        if (from.getUserName() != null) return "@" + from.getUserName();
+        return "Участник";
+    }
+
     private boolean isAddressedToBot(String text) {
         if (text.startsWith("/")) return true;
         return text.toLowerCase().contains("@" + botUsername.toLowerCase());
@@ -92,9 +135,21 @@ public class UpdateDispatcher {
         return text.replaceAll("(?i)@" + botUsername, "").trim();
     }
 
+    private void sendGroupWelcome(Long chatId) throws TelegramApiException {
+        sendReply(chatId, """
+                Привет! Я бот для управления задачами YouGile 👋
+
+                Чтобы начать работу, каждый участник должен зарегистрироваться:
+                1. Найдите меня в Telegram: @""" + botUsername + """
+
+                2. Напишите мне /start в личных сообщениях
+                3. Введите логин и пароль от YouGile
+
+                После регистрации вы сможете управлять задачами прямо из этого чата — просто напишите @""" + botUsername + " и ваш запрос.");
+    }
+
     private void handleCommand(Message message, String command, Long chatId) throws TelegramApiException {
         Long userId = message.getFrom().getId();
-
         switch (command) {
             case "/start" -> {
                 log.info("Command '/start' from userId={}", userId);

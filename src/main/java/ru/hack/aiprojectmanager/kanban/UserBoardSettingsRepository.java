@@ -1,13 +1,15 @@
-package ru.hack.aiprojectmanager.storage;
+package ru.hack.aiprojectmanager.kanban;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
 
+@Repository
 public interface UserBoardSettingsRepository extends JpaRepository<UserBoardSettings, Long> {
     Optional<UserBoardSettings> findByTelegramIdAndIsDefaultTrue(Long telegramId);
 

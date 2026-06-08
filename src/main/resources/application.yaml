@@ -41,3 +41,9 @@ telegram:
   bot:
     token: ${TELEGRAM_BOT_TOKEN}
     username: ${TELEGRAM_BOT_USERNAME}
+  miniapp:
+    dev-mode: ${MINIAPP_DEV_MODE:false}
+
+telemost:
+  image-name: ${TELEMOST_IMAGE:telemost-recorder}
+  output-base-dir: ${TELEMOST_OUTPUT_DIR:/tmp/telemost}

@@ -1,14 +1,16 @@
-package ru.hack.aiprojectmanager.storage;
+package ru.hack.aiprojectmanager.task;
 
 import org.springframework.data.jpa.repository.JpaRepository;
-import ru.hack.aiprojectmanager.common.TaskStatus;
+import org.springframework.stereotype.Repository;
+import ru.hack.aiprojectmanager.task.TaskStatus;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+@Repository
 public interface TaskEntityRepository extends JpaRepository<TaskEntity, Long> {
-    Optional<TaskEntity> findByYougileTaskIdAndChatId(String yougileTaskId, Long chatId);
+    Optional<TaskEntity> findByYougileTaskIdAndTelegramId(String yougileTaskId, Long telegramId);
 
     List<TaskEntity> findByDeadlineBeforeAndReminderSentAtIsNull(LocalDateTime threshold);
 

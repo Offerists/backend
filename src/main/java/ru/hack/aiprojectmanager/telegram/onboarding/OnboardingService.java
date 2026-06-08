@@ -5,7 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.HttpClientErrorException;
-import ru.hack.aiprojectmanager.common.TaskStatus;
+import ru.hack.aiprojectmanager.task.TaskStatus;
 import ru.hack.aiprojectmanager.kanban.yougile.YougileAuthClient;
 import ru.hack.aiprojectmanager.kanban.yougile.YougileClient;
 import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileBoardDto;
@@ -13,10 +13,10 @@ import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileColumnDto;
 import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileCompanyDto;
 import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileProjectDto;
 import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileUserDto;
-import ru.hack.aiprojectmanager.storage.AppUser;
-import ru.hack.aiprojectmanager.storage.AppUserRepository;
-import ru.hack.aiprojectmanager.storage.UserBoardSettings;
-import ru.hack.aiprojectmanager.storage.UserBoardSettingsRepository;
+import ru.hack.aiprojectmanager.user.AppUser;
+import ru.hack.aiprojectmanager.user.AppUserRepository;
+import ru.hack.aiprojectmanager.kanban.UserBoardSettings;
+import ru.hack.aiprojectmanager.kanban.UserBoardSettingsRepository;
 
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -244,6 +244,7 @@ public class OnboardingService {
                     .telegramId(telegramUserId)
                     .companyId(session.getCompanyId())
                     .boardId(board.id())
+                    .boardName(board.displayName())
                     .columnTodoId(mapping.get(TaskStatus.TODO))
                     .columnInProgressId(mapping.get(TaskStatus.IN_PROGRESS))
                     .columnReviewId(mapping.get(TaskStatus.REVIEW))

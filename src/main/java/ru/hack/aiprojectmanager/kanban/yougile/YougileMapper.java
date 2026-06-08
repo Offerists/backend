@@ -1,11 +1,11 @@
 package ru.hack.aiprojectmanager.kanban.yougile;
 
 import org.springframework.stereotype.Component;
-import ru.hack.aiprojectmanager.common.Task;
-import ru.hack.aiprojectmanager.common.TaskStatus;
+import ru.hack.aiprojectmanager.task.Task;
+import ru.hack.aiprojectmanager.task.TaskStatus;
 import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileTaskDto;
 import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileTaskRequest;
-import ru.hack.aiprojectmanager.storage.UserBoardSettings;
+import ru.hack.aiprojectmanager.kanban.UserBoardSettings;
 
 import java.time.Instant;
 import java.time.LocalDateTime;

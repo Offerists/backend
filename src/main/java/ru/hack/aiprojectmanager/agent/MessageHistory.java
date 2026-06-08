@@ -1,4 +1,4 @@
-package ru.hack.aiprojectmanager.storage;
+package ru.hack.aiprojectmanager.agent;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -16,29 +16,27 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "app_users")
+@Table(name = "message_history")
 @Getter
 @Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class AppUser {
+public class MessageHistory {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(nullable = false)
-    private Long telegramId;
-
-    @Column(nullable = false)
     private Long chatId;
 
-    private String yougileUserId;
-    private String yougileApiKey;
-    private String yougileRole;
-    private String yougileCompanyId;
-    private String username;
-    private String fullName;
+    private Long telegramUserId;
+
+    @Column(nullable = false, length = 20)
+    private String role;
+
+    @Column(nullable = false, columnDefinition = "text")
+    private String content;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
