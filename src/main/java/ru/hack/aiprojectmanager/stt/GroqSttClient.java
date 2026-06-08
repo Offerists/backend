@@ -28,10 +28,18 @@ public class GroqSttClient implements SttProvider {
 
     @Override
     public String transcribe(byte[] audio, String fileName) {
+        return transcribe(audio, fileName, null);
+    }
+
+    @Override
+    public String transcribe(byte[] audio, String fileName, String previousContext) {
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
         body.add("file", namedResource(audio, fileName));
         body.add("model", model);
         body.add("response_format", "json");
+        if (previousContext != null && !previousContext.isBlank()) {
+            body.add("prompt", previousContext);
+        }
 
         TranscriptionResponse response = restClient.post()
                 .uri("/audio/transcriptions")

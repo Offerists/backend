@@ -55,6 +55,16 @@ public class AgentService {
           • спрашивают «кто возьмёт», «кому назначить», «у кого есть время»
           • нужно оценить загрузку команды перед назначением
 
+        schedule_meeting_recording — вызывай когда:
+          • пользователь хочет записать будущую встречу («запланируй запись», «запиши встречу на...»)
+          • есть ссылка на Telemost и дата/время начала
+          • формат даты для передачи в инструмент: yyyy-MM-ddTHH:mm (например 2024-03-15T15:00)
+
+        switch_board — вызывай когда:
+          • пользователь хочет сменить доску («переключись на», «смени доску», «выбери доску»)
+          • пользователь спрашивает какие у него есть доски
+          • передай пустую строку чтобы показать список всех досок
+
         update_task_status — вызывай когда нужно изменить статус или колонку задачи:
           • сначала find_task чтобы получить taskId
           • названия колонок берёшь только из того что вернул find_task или get_user_tasks
@@ -115,6 +125,7 @@ public class AgentService {
         - Мои завершённые → get_user_tasks(name="me", filter="done")
         - Состав команды → find_user
         - Изменить статус своей задачи → get_user_tasks → update_task_status
+        - Сменить / посмотреть доски → switch_board
 
         ПРАВИЛА:
         - Не показывай UUID, {tid:...}, технические ID, названия инструментов
@@ -146,14 +157,16 @@ public class AgentService {
     private final SetReminderSkill setReminder;
     private final FindUserSkill findUser;
     private final SuggestAssigneeSkill suggestAssignee;
+    private final ScheduleMeetingSkill scheduleMeeting;
+    private final SwitchBoardSkill switchBoard;
 
     private Object[] leadTools;
     private Object[] memberTools;
 
     @PostConstruct
     void init() {
-        leadTools = new Object[]{createTask, findTask, getUserTasks, updateTaskStatus, assignTask, setReminder, findUser, suggestAssignee};
-        memberTools = new Object[]{getUserTasks, updateTaskStatus, findUser};
+        leadTools = new Object[]{createTask, findTask, getUserTasks, updateTaskStatus, assignTask, setReminder, findUser, suggestAssignee, scheduleMeeting, switchBoard};
+        memberTools = new Object[]{getUserTasks, updateTaskStatus, findUser, switchBoard};
     }
 
     public String process(Long chatId, Long telegramUserId, String userMessage) {
@@ -174,7 +187,7 @@ public class AgentService {
                         .messages(history)
                         .user(userMessage)
                         .tools(tools)
-                        .toolContext(Map.of("telegramUserId", telegramUserId))
+                        .toolContext(Map.of("telegramUserId", telegramUserId, "chatId", chatId))
                         .call()
                         .content();
                 break;

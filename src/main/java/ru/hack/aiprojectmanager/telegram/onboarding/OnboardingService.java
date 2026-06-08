@@ -15,7 +15,7 @@ import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileProjectDto;
 import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileUserDto;
 import ru.hack.aiprojectmanager.user.AppUser;
 import ru.hack.aiprojectmanager.user.AppUserRepository;
-import ru.hack.aiprojectmanager.kanban.UserBoardSettings;
+import ru.hack.aiprojectmanager.user.AppUserService;
 import ru.hack.aiprojectmanager.kanban.UserBoardSettingsRepository;
 
 import java.util.EnumMap;
@@ -55,6 +55,7 @@ public class OnboardingService {
 
     private final AppUserRepository appUserRepository;
     private final UserBoardSettingsRepository boardSettingsRepository;
+    private final AppUserService appUserService;
     private final YougileAuthClient authClient;
     private final YougileClient yougileClient;
     private final ConcurrentHashMap<Long, OnboardingSession> sessions = new ConcurrentHashMap<>();
@@ -226,31 +227,20 @@ public class OnboardingService {
             Map<TaskStatus, String> mapping = mapColumns(columns);
             boolean confident = isConfidentMapping(mapping, columns.size());
 
-            // Сохраняем пользователя
-            AppUser user = appUserRepository.findFirstByTelegramId(telegramUserId)
-                    .orElse(AppUser.builder()
-                            .telegramId(telegramUserId)
-                            .chatId(session.getChatId())
-                            .build());
-            user.setYougileApiKey(session.getApiKey());
-            user.setYougileUserId(session.getYougileUserId());
-            user.setYougileCompanyId(session.getCompanyId());
-            user.setYougileRole(session.getYougileRole());
-            appUserRepository.save(user);
-
-            // Сохраняем настройки доски как default
-            boardSettingsRepository.clearDefaultForUser(telegramUserId);
-            boardSettingsRepository.save(UserBoardSettings.builder()
-                    .telegramId(telegramUserId)
-                    .companyId(session.getCompanyId())
-                    .boardId(board.id())
-                    .boardName(board.displayName())
-                    .columnTodoId(mapping.get(TaskStatus.TODO))
-                    .columnInProgressId(mapping.get(TaskStatus.IN_PROGRESS))
-                    .columnReviewId(mapping.get(TaskStatus.REVIEW))
-                    .columnDoneId(mapping.get(TaskStatus.DONE))
-                    .isDefault(true)
-                    .build());
+            appUserService.register(new AppUserService.RegistrationData(
+                    telegramUserId,
+                    session.getChatId(),
+                    session.getApiKey(),
+                    session.getCompanyId(),
+                    session.getYougileUserId(),
+                    session.getYougileRole(),
+                    board.id(),
+                    board.displayName(),
+                    mapping.get(TaskStatus.TODO),
+                    mapping.get(TaskStatus.IN_PROGRESS),
+                    mapping.get(TaskStatus.REVIEW),
+                    mapping.get(TaskStatus.DONE)
+            ));
 
             sessions.remove(telegramUserId);
 

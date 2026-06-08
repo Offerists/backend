@@ -5,6 +5,7 @@ import ru.hack.aiprojectmanager.task.TaskStatus;
 
 import java.util.List;
 
+
 public interface KanbanProvider {
 
     String createTask(Long telegramUserId, Task task);

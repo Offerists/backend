@@ -13,6 +13,7 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 import ru.hack.aiprojectmanager.agent.AgentService;
 import ru.hack.aiprojectmanager.agent.GroupContextService;
+import ru.hack.aiprojectmanager.notification.DigestScheduler;
 import ru.hack.aiprojectmanager.stt.SttProvider;
 import ru.hack.aiprojectmanager.telemost.RecordingService;
 import ru.hack.aiprojectmanager.telegram.onboarding.OnboardingService;
@@ -38,6 +39,7 @@ public class UpdateDispatcher {
     private final TelegramClient telegramClient;
     private final SttProvider sttProvider;
     private final RecordingService recordingService;
+    private final DigestScheduler digestScheduler;
 
     @Value("${telegram.bot.username}")
     private String botUsername;
@@ -165,9 +167,21 @@ public class UpdateDispatcher {
                     Доступные команды:
                     /start — начать работу / настроить интеграцию
                     /help — список команд
+                    /morning — вручную запустить утреннее уведомление
+                    /evening — вручную запустить вечерний дайджест
 
                     Просто напиши что нужно — например: "Создай задачу написать тесты".
                     """);
+            case "/morning" -> {
+                log.info("Manual morning reminder triggered by userId={}", userId);
+                sendReply(chatId, "⏰ Запускаю утреннее уведомление...");
+                digestScheduler.sendMorningReminderFor(userId);
+            }
+            case "/evening" -> {
+                log.info("Manual evening digest triggered by userId={}", userId);
+                sendReply(chatId, "📋 Запускаю вечерний дайджест...");
+                digestScheduler.sendEveningDigestFor(userId);
+            }
             default -> {
                 log.warn("Unknown command '{}' from userId={}", command, userId);
                 sendReply(chatId, "Неизвестная команда. Напиши /help для справки.");

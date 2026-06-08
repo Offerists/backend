@@ -22,7 +22,7 @@ RUN java -Djarmode=layertools -jar build/libs/*.jar extract --destination extrac
 
 FROM eclipse-temurin:25-jre-alpine
 
-RUN apk add --no-cache docker-cli
+RUN apk add --no-cache docker-cli ffmpeg
 
 RUN addgroup -S spring && adduser -S spring -G spring
 

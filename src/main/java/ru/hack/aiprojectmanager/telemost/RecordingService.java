@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -20,7 +21,9 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class RecordingService {
 
-    private static final long WHISPER_MAX_BYTES = 20L * 1024 * 1024; // 20MB
+    private static final long WHISPER_MAX_BYTES = 20L * 1024 * 1024; // 20 MB (~1h25m при 32kbps)
+    private static final int CHUNK_DURATION_SECS = 70 * 60;          // 70 минут на чанк
+    private static final int CONTEXT_CHARS = 200;
     private static final String AUDIO_FILE = "output.ogg";
 
     private final SttProvider sttProvider;
@@ -52,17 +55,8 @@ public class RecordingService {
                 return;
             }
 
-            long size = Files.size(audio);
-            if (size > WHISPER_MAX_BYTES) {
-                long mb = size / (1024 * 1024);
-                log.warn("Audio too large for Whisper: {}MB session={}", mb, sessionId);
-                notificationSender.send(chatId,
-                        "⚠️ Запись слишком длинная (" + mb + " МБ). Максимум ~2.5 часа для транскрипции.");
-                return;
-            }
-
             notificationSender.send(chatId, "🔄 Транскрибирую запись...");
-            String transcription = sttProvider.transcribe(Files.readAllBytes(audio), AUDIO_FILE);
+            String transcription = transcribeAudio(audio);
 
             if (transcription == null || transcription.isBlank()) {
                 notificationSender.send(chatId, "⚠️ Не удалось распознать речь в записи.");
@@ -78,6 +72,70 @@ public class RecordingService {
         } finally {
             cleanup(outputDir);
         }
+    }
+
+    String transcribeAudio(Path audioFile) throws Exception {
+        long size = Files.size(audioFile);
+        if (size <= WHISPER_MAX_BYTES) {
+            return sttProvider.transcribe(Files.readAllBytes(audioFile), AUDIO_FILE);
+        }
+        log.info("Audio too large ({}MB), splitting into chunks", size / 1024 / 1024);
+        return transcribeInChunks(audioFile);
+    }
+
+    private String transcribeInChunks(Path audioFile) throws Exception {
+        Path chunksDir = audioFile.getParent().resolve("chunks");
+        Files.createDirectories(chunksDir);
+        try {
+            try {
+                splitAudio(audioFile, chunksDir);
+            } catch (Exception e) {
+                log.warn("FFmpeg split failed ({}), falling back to direct transcription", e.getMessage());
+                return sttProvider.transcribe(Files.readAllBytes(audioFile), AUDIO_FILE);
+            }
+
+            List<Path> chunks = Files.list(chunksDir)
+                    .filter(p -> p.getFileName().toString().startsWith("chunk_"))
+                    .sorted()
+                    .toList();
+
+            if (chunks.isEmpty()) {
+                log.warn("FFmpeg split produced no chunks, falling back to direct transcription");
+                return sttProvider.transcribe(Files.readAllBytes(audioFile), AUDIO_FILE);
+            }
+
+            log.info("Transcribing {} chunks", chunks.size());
+            StringBuilder full = new StringBuilder();
+            String context = null;
+
+            for (Path chunk : chunks) {
+                String part = sttProvider.transcribe(
+                        Files.readAllBytes(chunk),
+                        chunk.getFileName().toString(),
+                        context
+                );
+                if (!full.isEmpty()) full.append(' ');
+                full.append(part);
+                context = part.length() > CONTEXT_CHARS
+                        ? part.substring(part.length() - CONTEXT_CHARS)
+                        : part;
+            }
+
+            return full.toString();
+        } finally {
+            cleanup(chunksDir);
+        }
+    }
+
+    private void splitAudio(Path audioFile, Path chunksDir) throws IOException, InterruptedException {
+        new ProcessBuilder(
+                "ffmpeg", "-i", audioFile.toString(),
+                "-f", "segment",
+                "-segment_time", String.valueOf(CHUNK_DURATION_SECS),
+                "-reset_timestamps", "1",
+                "-c", "copy",
+                chunksDir.resolve("chunk_%03d.ogg").toString()
+        ).redirectErrorStream(true).start().waitFor();
     }
 
     private void runContainer(String sessionId, String url, Path outputDir) throws IOException, InterruptedException {

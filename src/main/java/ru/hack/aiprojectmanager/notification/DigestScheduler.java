@@ -40,6 +40,14 @@ public class DigestScheduler {
         usersWithDigest().forEach(this::sendEvening);
     }
 
+    public void sendMorningReminderFor(Long telegramId) {
+        appUserRepository.findFirstByTelegramId(telegramId).ifPresent(this::sendMorning);
+    }
+
+    public void sendEveningDigestFor(Long telegramId) {
+        appUserRepository.findFirstByTelegramId(telegramId).ifPresent(this::sendEvening);
+    }
+
     private List<AppUser> usersWithDigest() {
         return appUserRepository.findAll().stream()
                 .filter(u -> u.getYougileApiKey() != null && u.getYougileUserId() != null)
