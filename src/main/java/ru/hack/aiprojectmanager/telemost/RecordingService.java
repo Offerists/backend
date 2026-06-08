@@ -25,6 +25,7 @@ public class RecordingService {
     private static final int CHUNK_DURATION_SECS = 70 * 60;          // 70 минут на чанк
     private static final int CONTEXT_CHARS = 200;
     private static final String AUDIO_FILE = "output.ogg";
+    private static final String DEBUG_AUDIO_PATH = "/tmp/telemost/last_recording.ogg";
 
     private final SttProvider sttProvider;
     private final NotificationSender notificationSender;
@@ -45,15 +46,18 @@ public class RecordingService {
 
     private void runRecording(Long chatId, String sessionId, String url) {
         Path outputDir = Path.of(outputBaseDir, sessionId);
+        Path audio = outputDir.resolve(AUDIO_FILE);
         try {
             Files.createDirectories(outputDir);
             runContainer(sessionId, url, outputDir);
 
-            Path audio = outputDir.resolve(AUDIO_FILE);
             if (!Files.exists(audio) || Files.size(audio) == 0) {
+                dumpRecorderLog(sessionId, outputDir);
                 notificationSender.send(chatId, "⚠️ Запись завершена, но аудиофайл не найден.");
                 return;
             }
+
+            saveDebugCopy(audio);
 
             notificationSender.send(chatId, "🔄 Транскрибирую запись...");
             String transcription = transcribeAudio(audio);
@@ -141,9 +145,10 @@ public class RecordingService {
     private void runContainer(String sessionId, String url, Path outputDir) throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(
                 "docker", "run", "--rm",
-                "--cpus=0.5",
-                "--memory=384m",
-                "--shm-size=128m",
+                "--cpus=1.0",
+                "--memory=768m",
+                "--shm-size=256m",
+                "-p", "5900:5900",
                 "-v", outputDir.toAbsolutePath() + ":/app/output",
                 "--name", "telemost-" + sessionId,
                 imageName,
@@ -152,12 +157,20 @@ public class RecordingService {
         pb.redirectErrorStream(true);
         Process process = pb.start();
 
-        try (var reader = process.inputReader()) {
-            reader.lines().forEach(line -> log.debug("[telemost-{}] {}", sessionId, line));
-        }
+        // Стримим логи контейнера на INFO уровне в отдельном потоке
+        Thread logThread = Thread.ofVirtual().start(() -> {
+            try (var reader = process.inputReader()) {
+                reader.lines().forEach(line -> log.info("[telemost-{}] {}", sessionId, line));
+            } catch (Exception ignored) {}
+        });
 
         int exitCode = process.waitFor();
+        logThread.join(5000); // ждём дочитки логов до 5 сек
         log.info("Container session={} exited with code={}", sessionId, exitCode);
+
+        if (exitCode != 0) {
+            log.warn("Container session={} exited non-zero ({}), output.ogg may be missing", sessionId, exitCode);
+        }
     }
 
     private String summarize(String transcription) {
@@ -177,6 +190,37 @@ public class RecordingService {
             return transcription.length() > 2000
                     ? transcription.substring(0, 2000) + "...\n[обрезано]"
                     : transcription;
+        }
+    }
+
+    private void saveDebugCopy(Path audio) {
+        try {
+            if (!Files.exists(audio)) return;
+            Path dest = Path.of(DEBUG_AUDIO_PATH);
+            Files.copy(audio, dest, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            log.info("Debug copy saved to {}", DEBUG_AUDIO_PATH);
+        } catch (Exception e) {
+            log.warn("Failed to save debug copy: {}", e.getMessage());
+        }
+    }
+
+    private void dumpRecorderLog(String sessionId, Path outputDir) {
+        Path logFile = outputDir.resolve("recorder.log");
+        if (!Files.exists(logFile)) {
+            log.warn("[telemost-{}] recorder.log не найден — логи контейнера недоступны", sessionId);
+            return;
+        }
+        try {
+            String content = Files.readString(logFile);
+            // Выводим последние 100 строк чтобы не флудить
+            String[] lines = content.split("\n");
+            int from = Math.max(0, lines.length - 100);
+            log.warn("[telemost-{}] === recorder.log (последние {} строк) ===", sessionId, lines.length - from);
+            for (int i = from; i < lines.length; i++) {
+                log.warn("[telemost-{}] {}", sessionId, lines[i]);
+            }
+        } catch (Exception e) {
+            log.warn("[telemost-{}] Не удалось прочитать recorder.log: {}", sessionId, e.getMessage());
         }
     }
 
