@@ -53,6 +53,7 @@ public class RecordingService {
 
             if (!Files.exists(audio) || Files.size(audio) == 0) {
                 dumpRecorderLog(sessionId, outputDir);
+                preserveDiagnostics(sessionId, outputDir);
                 notificationSender.send(chatId, "⚠️ Запись завершена, но аудиофайл не найден.");
                 return;
             }
@@ -145,9 +146,12 @@ public class RecordingService {
     private void runContainer(String sessionId, String url, Path outputDir) throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(
                 "docker", "run", "--rm",
-                "--cpus=1.0",
-                "--memory=768m",
-                "--shm-size=256m",
+                "--cpus=1.5",
+                // Полноценный (не headless) Chromium + node + ffmpeg + pulseaudio +
+                // Xvfb легко съедают >1 ГБ. На 768m рендерер падал по OOM ещё на
+                // этапе подключения к звонку.
+                "--memory=2g",
+                "--shm-size=512m",
                 "-p", "5900:5900",
                 "-v", outputDir.toAbsolutePath() + ":/app/output",
                 "--name", "telemost-" + sessionId,
@@ -201,6 +205,35 @@ public class RecordingService {
             log.info("Debug copy saved to {}", DEBUG_AUDIO_PATH);
         } catch (Exception e) {
             log.warn("Failed to save debug copy: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Когда запись не удалась, переносим логи и скриншоты контейнера в постоянную
+     * папку, чтобы их не стёр {@link #cleanup}. Без этого диагностировать, почему
+     * бот не подключился к встрече, невозможно.
+     */
+    private void preserveDiagnostics(String sessionId, Path outputDir) {
+        try {
+            Path debugDir = Path.of(outputBaseDir, "debug", sessionId);
+            Files.createDirectories(debugDir);
+            try (var stream = Files.list(outputDir)) {
+                stream.filter(p -> {
+                            String name = p.getFileName().toString();
+                            return name.endsWith(".png") || name.endsWith(".log");
+                        })
+                        .forEach(p -> {
+                            try {
+                                Files.copy(p, debugDir.resolve(p.getFileName()),
+                                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                            } catch (IOException e) {
+                                log.warn("Failed to preserve {}: {}", p, e.getMessage());
+                            }
+                        });
+            }
+            log.warn("[telemost-{}] Диагностика (логи + скриншоты) сохранена в {}", sessionId, debugDir);
+        } catch (Exception e) {
+            log.warn("[telemost-{}] Не удалось сохранить диагностику: {}", sessionId, e.getMessage());
         }
     }
 
