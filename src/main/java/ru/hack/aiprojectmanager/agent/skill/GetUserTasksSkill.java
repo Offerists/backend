@@ -10,8 +10,10 @@ import ru.hack.aiprojectmanager.task.TaskStatus;
 import ru.hack.aiprojectmanager.kanban.yougile.YougileClient;
 import ru.hack.aiprojectmanager.kanban.yougile.YougileMapper;
 import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileColumnDto;
+import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileUserDto;
 import ru.hack.aiprojectmanager.user.AppUser;
 import ru.hack.aiprojectmanager.user.AppUserRepository;
+import ru.hack.aiprojectmanager.user.UserMatcher;
 import ru.hack.aiprojectmanager.kanban.UserBoardSettings;
 import ru.hack.aiprojectmanager.kanban.UserBoardSettingsRepository;
 
@@ -40,6 +42,8 @@ public class GetUserTasksSkill {
             org.springframework.ai.chat.model.ToolContext ctx) {
 
         Long telegramUserId = (Long) ctx.getContext().get("telegramUserId");
+        Boolean isLeadCtx = (Boolean) ctx.getContext().get("isLead");
+        boolean isLead = isLeadCtx == null || isLeadCtx;
 
         AppUser requester = appUserRepository.findFirstByTelegramId(telegramUserId).orElse(null);
         if (requester == null || requester.getYougileApiKey() == null) return "Активных задач нет";
@@ -49,8 +53,22 @@ public class GetUserTasksSkill {
         if (board == null) return "Активных задач нет";
 
         String apiKey = requester.getYougileApiKey();
-        String targetYougileId = resolveTarget(requester, name, telegramUserId);
+        // Участники могут смотреть только свои задачи
+        String effectiveName = isLead ? name : "me";
         String mode = filter != null ? filter.toLowerCase(Locale.ROOT) : "active";
+
+        String targetYougileId;
+        if (effectiveName == null || effectiveName.isBlank()) {
+            targetYougileId = null;
+        } else if (effectiveName.equalsIgnoreCase("me") || effectiveName.equalsIgnoreCase("я")) {
+            targetYougileId = requester.getYougileUserId();
+            if (targetYougileId == null) return "Активных задач нет";
+        } else {
+            targetYougileId = resolveTarget(requester, effectiveName);
+            if (targetYougileId == null) {
+                return "Участник «" + effectiveName + "» не найден.";
+            }
+        }
 
         List<Task> tasks;
         if (targetYougileId != null) {
@@ -99,25 +117,21 @@ public class GetUserTasksSkill {
         return sb.toString().trim();
     }
 
-    private String resolveTarget(AppUser requester, String name, Long telegramUserId) {
-        if (name == null) return null;
-        if (name.equalsIgnoreCase("me") || name.equalsIgnoreCase("я")) {
-            return requester.getYougileUserId();
-        }
-        String q = name.startsWith("@") ? name.substring(1).toLowerCase() : name.toLowerCase();
+    /** Резолвит имя/@username/email участника в его YouGile user id, либо null если никто не найден. */
+    private String resolveTarget(AppUser requester, String name) {
         List<AppUser> candidates = requester.getYougileCompanyId() != null
                 ? appUserRepository.findByYougileCompanyId(requester.getYougileCompanyId())
                 : List.of();
-        return candidates.stream()
-                .filter(u -> (u.getUsername() != null && u.getUsername().toLowerCase().contains(q))
-                        || (u.getFullName() != null && u.getFullName().toLowerCase().contains(q)))
+        String fromDb = candidates.stream()
+                .filter(u -> UserMatcher.matches(u, name))
                 .map(AppUser::getYougileUserId).filter(Objects::nonNull)
                 .findFirst().orElse(null);
-    }
+        if (fromDb != null) return fromDb;
 
-    private boolean isAssignedTo(Task t, String id) {
-        return (t.getAssigneeId() != null && t.getAssigneeId().equals(id))
-                || (t.getAssigneeIds() != null && t.getAssigneeIds().contains(id));
+        // Fallback: ищем прямо в YouGile по realName (участник может быть не зарегистрирован в боте)
+        String q = name.startsWith("@") ? name.substring(1) : name;
+        return yougileClient.findUsersByName(requester.getYougileApiKey(), q)
+                .stream().map(YougileUserDto::id).findFirst().orElse(null);
     }
 
     private String statusLabel(String s) {

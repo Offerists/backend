@@ -186,6 +186,8 @@ public class OnboardingService {
                 session.setYougileUserId(me.id());
                 // isAdmin = true → роль "LEAD", иначе "MEMBER"
                 session.setYougileRole(Boolean.TRUE.equals(me.isAdmin()) ? "LEAD" : "MEMBER");
+                session.setYougileRealName(me.realName());
+                session.setYougileEmail(me.email());
                 log.info("YouGile user linked: id={}, isAdmin={}", me.id(), me.isAdmin());
             }
         } catch (Exception e) {
@@ -234,6 +236,8 @@ public class OnboardingService {
                     session.getCompanyId(),
                     session.getYougileUserId(),
                     session.getYougileRole(),
+                    session.getYougileRealName(),
+                    session.getYougileEmail(),
                     board.id(),
                     board.displayName(),
                     mapping.get(TaskStatus.TODO),

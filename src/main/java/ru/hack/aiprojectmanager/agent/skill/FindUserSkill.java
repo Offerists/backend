@@ -6,9 +6,9 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 import ru.hack.aiprojectmanager.user.AppUser;
 import ru.hack.aiprojectmanager.user.AppUserRepository;
+import ru.hack.aiprojectmanager.user.UserMatcher;
 
 import java.util.List;
-import java.util.Locale;
 
 @Component
 @RequiredArgsConstructor
@@ -34,28 +34,16 @@ public class FindUserSkill {
                 || "все".equalsIgnoreCase(name);
 
         List<AppUser> matches = listAll ? users
-                : users.stream().filter(u -> matches(u, name.toLowerCase(Locale.ROOT))).toList();
+                : users.stream().filter(u -> UserMatcher.matches(u, name)).toList();
 
         if (matches.isEmpty()) return "Пользователь «" + name + "» не найден.";
 
         var sb = new StringBuilder();
         for (AppUser u : matches) {
-            sb.append("• ").append(displayName(u));
+            sb.append("• ").append(UserMatcher.displayName(u));
             if (u.getYougileUserId() == null) sb.append(" (не привязан к YouGile)");
             sb.append("\n");
         }
         return sb.toString().trim();
-    }
-
-    private boolean matches(AppUser u, String q) {
-        return (u.getUsername() != null && u.getUsername().toLowerCase().contains(q))
-                || (u.getFullName() != null && u.getFullName().toLowerCase().contains(q));
-    }
-
-    private String displayName(AppUser u) {
-        if (u.getFullName() != null && !u.getFullName().isBlank()) {
-            return u.getUsername() != null ? u.getFullName() + " (@" + u.getUsername() + ")" : u.getFullName();
-        }
-        return u.getUsername() != null ? "@" + u.getUsername() : "пользователь";
     }
 }

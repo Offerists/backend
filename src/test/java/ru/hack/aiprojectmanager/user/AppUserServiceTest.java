@@ -23,7 +23,7 @@ class AppUserServiceTest {
     @InjectMocks AppUserService appUserService;
 
     private static final AppUserService.RegistrationData DATA = new AppUserService.RegistrationData(
-            123L, 456L, "api-key", "company-1", "yougile-user-1", "LEAD",
+            123L, 456L, "api-key", "company-1", "yougile-user-1", "LEAD", "Иван Иванов", "ivan@example.com",
             "board-1", "Sprint Board", "col-todo", "col-wip", "col-review", "col-done"
     );
 

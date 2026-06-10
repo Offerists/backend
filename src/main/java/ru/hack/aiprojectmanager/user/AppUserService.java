@@ -22,6 +22,8 @@ public class AppUserService {
             String companyId,
             String yougileUserId,
             String yougileRole,
+            String yougileRealName,
+            String yougileEmail,
             String boardId,
             String boardName,
             String columnTodoId,
@@ -42,6 +44,8 @@ public class AppUserService {
         user.setYougileUserId(data.yougileUserId());
         user.setYougileCompanyId(data.companyId());
         user.setYougileRole(data.yougileRole());
+        user.setYougileRealName(data.yougileRealName());
+        user.setYougileEmail(data.yougileEmail());
         AppUser saved = appUserRepository.save(user);
 
         boardSettingsRepository.clearDefaultForUser(data.telegramId());

@@ -29,6 +29,8 @@ class OnboardingSession {
     private String companyId;
     private String yougileUserId;
     private String yougileRole;
+    private String yougileRealName;
+    private String yougileEmail;
 
     void clearCredentials() {
         password = null;

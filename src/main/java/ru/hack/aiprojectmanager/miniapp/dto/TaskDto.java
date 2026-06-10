@@ -6,6 +6,7 @@ import ru.hack.aiprojectmanager.task.TaskStatus;
 
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 
 @Schema(description = "Задача")
 public record TaskDto(
@@ -15,11 +16,15 @@ public record TaskDto(
         @Schema(description = "Статус", allowableValues = {"TODO", "IN_PROGRESS", "REVIEW", "DONE"}, example = "IN_PROGRESS") String status,
         @Schema(description = "Читаемый статус на русском", example = "В работе") String statusLabel,
         @Schema(description = "Дедлайн в ISO 8601", example = "2025-07-01T00:00:00") String deadline,
-        @Schema(description = "Список YouGile ID исполнителей") List<String> assigneeIds
+        @Schema(description = "Исполнители задачи") List<AssigneeDto> assignees
 ) {
     private static final DateTimeFormatter FMT = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
-    public static TaskDto from(Task task) {
+    public static TaskDto from(Task task, Map<String, String> userNames) {
+        List<AssigneeDto> assignees = task.getAssigneeIds() == null ? List.of() :
+                task.getAssigneeIds().stream()
+                        .map(id -> new AssigneeDto(id, userNames.getOrDefault(id, id)))
+                        .toList();
         return new TaskDto(
                 task.getExternalId(),
                 task.getTitle(),
@@ -27,8 +32,13 @@ public record TaskDto(
                 task.getStatus() != null ? task.getStatus().name() : TaskStatus.TODO.name(),
                 statusLabel(task.getStatus()),
                 task.getDeadline() != null ? task.getDeadline().format(FMT) : null,
-                task.getAssigneeIds() != null ? task.getAssigneeIds() : List.of()
+                assignees
         );
+    }
+
+    /** Convenience overload when user names are not available. */
+    public static TaskDto from(Task task) {
+        return from(task, Map.of());
     }
 
     private static String statusLabel(TaskStatus status) {

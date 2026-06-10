@@ -21,4 +21,8 @@ public interface UserBoardSettingsRepository extends JpaRepository<UserBoardSett
     @Transactional
     @Query("update UserBoardSettings u set u.isDefault = false where u.telegramId = :telegramId")
     void clearDefaultForUser(Long telegramId);
+
+    @Modifying
+    @Transactional
+    void deleteByTelegramId(Long telegramId);
 }

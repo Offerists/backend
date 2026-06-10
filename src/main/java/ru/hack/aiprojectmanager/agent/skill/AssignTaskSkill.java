@@ -13,9 +13,9 @@ import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileUserDto;
 import ru.hack.aiprojectmanager.notification.NotificationSender;
 import ru.hack.aiprojectmanager.user.AppUser;
 import ru.hack.aiprojectmanager.user.AppUserRepository;
+import ru.hack.aiprojectmanager.user.UserMatcher;
 
 import java.util.List;
-import java.util.Locale;
 
 @Slf4j
 @Component
@@ -28,16 +28,23 @@ public class AssignTaskSkill {
     private final YougileClient yougileClient;
     private final AgentContextService agentContextService;
 
-    @Tool(name = "assign_task", description = "Назначить исполнителя на существующую задачу. task_id из find_task.")
+    @Tool(name = "assign_task", description = "Назначить исполнителя на существующую задачу. task_id из find_task. "
+            + "Чтобы назначить самого пользователя — передай assignee='себя'.")
     public String assignTask(
             @ToolParam(description = "task_id из find_task") String taskId,
-            @ToolParam(description = "Имя, @username или telegram_id исполнителя") String assignee,
+            @ToolParam(description = "Имя, @username, telegram_id исполнителя или 'себя'") String assignee,
             org.springframework.ai.chat.model.ToolContext ctx) {
 
         Long telegramUserId = (Long) ctx.getContext().get("telegramUserId");
+        Boolean isLeadCtx = (Boolean) ctx.getContext().get("isLead");
+        boolean isLead = isLeadCtx == null || isLeadCtx;
+
+        AppUser requester = appUserRepository.findFirstByTelegramId(telegramUserId).orElse(null);
 
         // Ищем сначала в AppUser, потом в YouGile
-        AppUser target = findAppUser(telegramUserId, assignee);
+        AppUser target = UserMatcher.isSelfReference(assignee)
+                ? requester
+                : findAppUser(telegramUserId, assignee);
         String yougileId = target != null ? target.getYougileUserId()
                 : resolveFromYougile(telegramUserId, assignee);
 
@@ -45,8 +52,23 @@ public class AssignTaskSkill {
             return "⚠️ Пользователь «" + assignee + "» не найден ни в системе, ни в YouGile.";
         }
 
+        if (!isLead) {
+            if (requester == null || requester.getYougileUserId() == null
+                    || !requester.getYougileUserId().equals(yougileId)) {
+                return "⚠️ Участники могут назначать только себя на задачу.";
+            }
+        }
+
         Task current = kanban.getTask(telegramUserId, taskId);
         if (current == null) return "Задача не найдена.";
+
+        if (!isLead) {
+            boolean isFree = current.getAssigneeId() == null
+                    && (current.getAssigneeIds() == null || current.getAssigneeIds().isEmpty());
+            if (!isFree) {
+                return "⚠️ Эта задача уже занята. Переназначать чужие задачи может только лид.";
+            }
+        }
 
         Task updated = Task.builder()
                 .title(current.getTitle()).description(current.getDescription())
@@ -56,8 +78,7 @@ public class AssignTaskSkill {
                 .build();
 
         kanban.updateTask(telegramUserId, taskId, updated);
-        String displayName = target != null && target.getFullName() != null
-                ? target.getFullName() : assignee;
+        String displayName = target != null ? UserMatcher.displayName(target) : assignee;
         agentContextService.rememberTask(telegramUserId, taskId, current.getTitle());
         agentContextService.rememberAssignee(telegramUserId, yougileId, displayName);
         notifyAssignee(target, current.getTitle(), telegramUserId);
@@ -79,12 +100,10 @@ public class AssignTaskSkill {
         } catch (NumberFormatException ignored) {}
         AppUser requester = appUserRepository.findFirstByTelegramId(telegramUserId).orElse(null);
         if (requester == null) return null;
-        String q = query.startsWith("@") ? query.substring(1).toLowerCase() : query.toLowerCase();
         List<AppUser> candidates = requester.getYougileCompanyId() != null
                 ? appUserRepository.findByYougileCompanyId(requester.getYougileCompanyId()) : List.of();
         return candidates.stream()
-                .filter(u -> (u.getUsername() != null && u.getUsername().toLowerCase(Locale.ROOT).contains(q))
-                        || (u.getFullName() != null && u.getFullName().toLowerCase(Locale.ROOT).contains(q)))
+                .filter(u -> UserMatcher.matches(u, query))
                 .findFirst().orElse(null);
     }
 
@@ -92,8 +111,7 @@ public class AssignTaskSkill {
         if (target == null || target.getChatId() == null) return;
         if (target.getTelegramId().equals(assignerTelegramId)) return;
         AppUser assigner = appUserRepository.findFirstByTelegramId(assignerTelegramId).orElse(null);
-        String assignerName = assigner != null && assigner.getFullName() != null
-                ? assigner.getFullName() : "Лид";
+        String assignerName = assigner != null ? UserMatcher.displayName(assigner) : "Лид";
         try {
             notificationSender.send(target.getChatId(),
                     "📌 " + assignerName + " назначил(а) тебя на задачу «" + taskTitle + "».");

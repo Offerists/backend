@@ -16,13 +16,16 @@ import ru.hack.aiprojectmanager.kanban.yougile.YougileClient;
 import ru.hack.aiprojectmanager.kanban.yougile.YougileMapper;
 import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileCompanyDto;
 import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileTaskDto;
+import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileTaskRequest;
 import ru.hack.aiprojectmanager.user.AppUser;
 import ru.hack.aiprojectmanager.user.AppUserRepository;
 import ru.hack.aiprojectmanager.kanban.UserBoardSettings;
 import ru.hack.aiprojectmanager.kanban.UserBoardSettingsRepository;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Slf4j
@@ -84,12 +87,41 @@ public class MiniAppService {
                 ? yougileClient.getTasksByColumns(user.getYougileApiKey(), columnIds(board))
                 : yougileClient.getTasksByAssignee(user.getYougileApiKey(), user.getYougileUserId());
 
+        Map<String, String> userNames = buildUserNamesMap(user.getYougileApiKey());
+
         return raw.stream()
                 .filter(dto -> !Boolean.TRUE.equals(dto.deleted()) && !Boolean.TRUE.equals(dto.archived()))
                 .map(dto -> mapper.toDomain(dto, board))
                 .filter(task -> matchesFilter(task, filter, user.getYougileUserId()))
-                .map(TaskDto::from)
+                .map(task -> TaskDto.from(task, userNames))
                 .toList();
+    }
+
+    public TaskDto createTask(Long telegramUserId, CreateTaskRequest req) {
+        AppUser user = requireConnectedUser(telegramUserId);
+        UserBoardSettings board = requireBoard(telegramUserId);
+
+        if (req.getTitle() == null || req.getTitle().isBlank()) {
+            throw MiniAppException.badRequest("title is required");
+        }
+
+        String columnId = req.getColumnId() != null ? req.getColumnId() : board.getColumnTodoId();
+        if (columnId == null) {
+            throw MiniAppException.conflict("No TODO column configured for the selected board");
+        }
+
+        YougileTaskRequest taskRequest = YougileTaskRequest.builder()
+                .title(req.getTitle().trim())
+                .description(req.getDescription())
+                .columnId(columnId)
+                .assigned(req.getAssigneeIds())
+                .deadline(YougileTaskRequest.deadlineOf(req.getDeadlineMs(), null))
+                .build();
+
+        YougileTaskDto created = yougileClient.createTask(user.getYougileApiKey(), taskRequest);
+        Task task = mapper.toDomain(created, board);
+        Map<String, String> userNames = buildUserNamesMap(user.getYougileApiKey());
+        return TaskDto.from(task, userNames);
     }
 
     private boolean matchesFilter(Task task, String filter, String yougileUserId) {
@@ -98,6 +130,30 @@ public class MiniAppService {
             case "all" -> true;
             default -> task.getStatus() != TaskStatus.DONE;
         };
+    }
+
+    // ── YouGile users ─────────────────────────────────────────────────────────
+
+    public List<UserDto> getUsers(Long telegramUserId) {
+        AppUser user = requireConnectedUser(telegramUserId);
+        return yougileClient.getUsers(user.getYougileApiKey()).stream()
+                .map(u -> new UserDto(u.id(), u.realName(), u.email()))
+                .toList();
+    }
+
+    private Map<String, String> buildUserNamesMap(String apiKey) {
+        try {
+            return yougileClient.getUsers(apiKey).stream()
+                    .filter(u -> u.id() != null)
+                    .collect(Collectors.toMap(
+                            u -> u.id(),
+                            u -> u.realName() != null ? u.realName() : u.email() != null ? u.email() : u.id(),
+                            (a, b) -> a
+                    ));
+        } catch (Exception e) {
+            log.warn("Failed to fetch user names: {}", e.getMessage());
+            return Map.of();
+        }
     }
 
     // ── YouGile integration ───────────────────────────────────────────────────
@@ -112,6 +168,21 @@ public class MiniAppService {
                 user.getYougileUserId(),
                 user.getYougileRole()
         );
+    }
+
+    @Transactional
+    public void disconnectYougile(Long telegramUserId) {
+        AppUser user = userRepository.findFirstByTelegramId(telegramUserId)
+                .orElseThrow(() -> MiniAppException.notFound("User not registered."));
+
+        user.setYougileApiKey(null);
+        user.setYougileUserId(null);
+        user.setYougileRole(null);
+        user.setYougileCompanyId(null);
+        userRepository.save(user);
+
+        boardSettingsRepository.deleteByTelegramId(telegramUserId);
+        log.info("YouGile disconnected for telegramUserId={}", telegramUserId);
     }
 
     @Transactional
@@ -151,7 +222,6 @@ public class MiniAppService {
             throw new MiniAppException(HttpStatus.BAD_GATEWAY, "Failed to obtain YouGile API key");
         }
 
-        // Persist user with API key
         AppUser user = userRepository.findFirstByTelegramId(telegramUserId)
                 .orElseThrow(() -> MiniAppException.notFound("User not registered. Send /start to the bot first."));
         user.setYougileApiKey(apiKey);
@@ -189,7 +259,6 @@ public class MiniAppService {
     public void selectBoard(Long telegramUserId, String boardId) {
         AppUser user = requireConnectedUser(telegramUserId);
 
-        // Verify board exists for this user's API key
         boolean boardExists = yougileClient.getBoards(user.getYougileApiKey()).stream()
                 .anyMatch(b -> b.id().equals(boardId));
         if (!boardExists) {
@@ -244,9 +313,10 @@ public class MiniAppService {
 
         kanbanProvider.moveTask(telegramUserId, taskId, newStatus);
 
-        // Return updated task
         Task updated = kanbanProvider.getTask(telegramUserId, taskId);
-        return TaskDto.from(updated);
+        AppUser user = requireConnectedUser(telegramUserId);
+        Map<String, String> userNames = buildUserNamesMap(user.getYougileApiKey());
+        return TaskDto.from(updated, userNames);
     }
 
     // ── Notification settings ─────────────────────────────────────────────────
@@ -256,7 +326,8 @@ public class MiniAppService {
                 .orElseThrow(() -> MiniAppException.notFound("User not registered."));
         return new NotificationSettingsResponse(
                 Boolean.TRUE.equals(user.getDigestEnabled()),
-                Boolean.TRUE.equals(user.getRemindersEnabled())
+                Boolean.TRUE.equals(user.getRemindersEnabled()),
+                user.getTimezone()
         );
     }
 
@@ -267,11 +338,13 @@ public class MiniAppService {
 
         if (req.getDigestEnabled() != null) user.setDigestEnabled(req.getDigestEnabled());
         if (req.getRemindersEnabled() != null) user.setRemindersEnabled(req.getRemindersEnabled());
+        if (req.getTimezone() != null) user.setTimezone(req.getTimezone());
         userRepository.save(user);
 
         return new NotificationSettingsResponse(
                 Boolean.TRUE.equals(user.getDigestEnabled()),
-                Boolean.TRUE.equals(user.getRemindersEnabled())
+                Boolean.TRUE.equals(user.getRemindersEnabled()),
+                user.getTimezone()
         );
     }
 

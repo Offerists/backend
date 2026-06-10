@@ -60,7 +60,8 @@ public class FindTaskSkill {
                 .getTasksByColumns(user.getYougileApiKey(), columns.stream().map(YougileColumnDto::id).toList())
                 .stream()
                 .map(dto -> mapper.toDomain(dto, board))
-                .filter(t -> t.getTitle() != null && t.getTitle().toLowerCase(Locale.ROOT).contains(kw))
+                .filter(t -> (t.getTitle() != null && t.getTitle().toLowerCase(Locale.ROOT).contains(kw))
+                        || (t.getDescription() != null && t.getDescription().toLowerCase(Locale.ROOT).contains(kw)))
                 .toList();
 
         if (found.isEmpty()) return "Задачи с «" + keyword + "» не найдено.";

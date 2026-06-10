@@ -13,6 +13,7 @@ import ru.hack.aiprojectmanager.miniapp.service.MiniAppService;
 import ru.hack.aiprojectmanager.miniapp.TelegramAuthFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import ru.hack.aiprojectmanager.miniapp.dto.CreateTaskRequest;
 import ru.hack.aiprojectmanager.miniapp.dto.TaskDto;
 import ru.hack.aiprojectmanager.miniapp.dto.UpdateTaskStatusRequest;
 
@@ -66,6 +67,46 @@ public class TaskApiController {
             HttpServletRequest request) {
         Long telegramUserId = (Long) request.getAttribute(TelegramAuthFilter.USER_ID_ATTR);
         return Map.of("tasks", service.getTasks(telegramUserId, filter));
+    }
+
+    @Operation(
+            summary = "Создать задачу",
+            description = "Создаёт новую задачу в YouGile в текущей выбранной доске пользователя. "
+                    + "Если `columnId` не указан, задача создаётся в колонке TODO.",
+            responses = {
+                    @ApiResponse(responseCode = "201", description = "Созданная задача",
+                            content = @Content(schema = @Schema(implementation = TaskDto.class))),
+                    @ApiResponse(responseCode = "400", description = "Невалидные данные",
+                            content = @Content(schema = @Schema(example = """
+                                    {"error": "title is required"}
+                                    """))),
+                    @ApiResponse(responseCode = "401", description = "Не аутентифицирован",
+                            content = @Content(schema = @Schema(example = """
+                                    {"error": "Missing X-Telegram-Init-Data header"}
+                                    """)))
+            }
+    )
+    @PostMapping
+    @org.springframework.web.bind.annotation.ResponseStatus(org.springframework.http.HttpStatus.CREATED)
+    public TaskDto createTask(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Данные новой задачи",
+                    content = @Content(
+                            schema = @Schema(implementation = CreateTaskRequest.class),
+                            examples = @ExampleObject(value = """
+                                    {
+                                      "title": "Доработать UI кнопок",
+                                      "description": "Правки по макету v2",
+                                      "deadlineMs": 1751328000000,
+                                      "assigneeIds": ["user-uuid-1"]
+                                    }
+                                    """)
+                    )
+            )
+            @RequestBody CreateTaskRequest body,
+            HttpServletRequest request) {
+        Long telegramUserId = (Long) request.getAttribute(TelegramAuthFilter.USER_ID_ATTR);
+        return service.createTask(telegramUserId, body);
     }
 
     @Operation(

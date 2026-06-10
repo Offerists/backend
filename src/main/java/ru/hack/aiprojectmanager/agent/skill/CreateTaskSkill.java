@@ -14,11 +14,11 @@ import ru.hack.aiprojectmanager.kanban.yougile.YougileClient;
 import ru.hack.aiprojectmanager.kanban.yougile.dto.YougileUserDto;
 import ru.hack.aiprojectmanager.user.AppUser;
 import ru.hack.aiprojectmanager.user.AppUserRepository;
+import ru.hack.aiprojectmanager.user.UserMatcher;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Locale;
 
 @Slf4j
 @Component
@@ -39,9 +39,19 @@ public class CreateTaskSkill {
             org.springframework.ai.chat.model.ToolContext ctx) {
 
         Long telegramUserId = (Long) ctx.getContext().get("telegramUserId");
-        String yougileAssigneeId = resolveAssignee(telegramUserId, assignee);
+        Boolean isLeadCtx = (Boolean) ctx.getContext().get("isLead");
+        boolean isLead = isLeadCtx == null || isLeadCtx;
 
         boolean assigneeRequested = assignee != null && !assignee.isBlank();
+        String yougileAssigneeId;
+        if (!isLead) {
+            // Участники создают задачи только себе
+            AppUser requester = appUserRepository.findFirstByTelegramId(telegramUserId).orElse(null);
+            yougileAssigneeId = requester != null ? requester.getYougileUserId() : null;
+        } else {
+            yougileAssigneeId = resolveAssignee(telegramUserId, assignee);
+        }
+
         boolean assigneeResolved = yougileAssigneeId != null;
 
         Task task = Task.builder()
@@ -55,6 +65,10 @@ public class CreateTaskSkill {
         String createdId = kanban.createTask(telegramUserId, task);
         agentContextService.rememberTask(telegramUserId, createdId, title);
 
+        if (!isLead && assigneeRequested && !UserMatcher.isSelfReference(assignee)) {
+            return "Задача «" + title + "» создана и назначена на тебя. "
+                    + "Назначать задачи другим участникам может только лид.";
+        }
         if (assigneeRequested && !assigneeResolved) {
             return "⚠️ Задача «" + title + "» создана БЕЗ исполнителя. "
                     + "Участник «" + assignee + "» не найден ни в системе, ни в YouGile. "
@@ -73,15 +87,14 @@ public class CreateTaskSkill {
                     .map(AppUser::getYougileUserId).orElse(null);
         } catch (NumberFormatException ignored) {}
 
-        // 2. По имени/username в AppUser
+        // 2. По имени/username/email в AppUser (telegram и YouGile)
         AppUser requester = appUserRepository.findFirstByTelegramId(telegramUserId).orElse(null);
         if (requester != null) {
-            String q = query.startsWith("@") ? query.substring(1).toLowerCase() : query.toLowerCase();
             List<AppUser> candidates = requester.getYougileCompanyId() != null
                     ? appUserRepository.findByYougileCompanyId(requester.getYougileCompanyId())
                     : List.of();
             String fromDb = candidates.stream()
-                    .filter(u -> matches(u, q))
+                    .filter(u -> UserMatcher.matches(u, query))
                     .map(AppUser::getYougileUserId)
                     .filter(id -> id != null)
                     .findFirst().orElse(null);
@@ -89,16 +102,12 @@ public class CreateTaskSkill {
 
             // 3. Fallback: ищем прямо в YouGile по realName
             if (requester.getYougileApiKey() != null) {
+                String q = query.startsWith("@") ? query.substring(1) : query;
                 return yougileClient.findUsersByName(requester.getYougileApiKey(), q)
                         .stream().map(YougileUserDto::id).findFirst().orElse(null);
             }
         }
         return null;
-    }
-
-    private boolean matches(AppUser u, String q) {
-        return (u.getUsername() != null && u.getUsername().toLowerCase(Locale.ROOT).contains(q))
-                || (u.getFullName() != null && u.getFullName().toLowerCase(Locale.ROOT).contains(q));
     }
 
     private LocalDateTime parseDeadline(String raw) {

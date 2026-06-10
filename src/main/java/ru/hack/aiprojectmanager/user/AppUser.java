@@ -37,8 +37,11 @@ public class AppUser {
     private String yougileApiKey;
     private String yougileRole;
     private String yougileCompanyId;
+    private String yougileRealName;
+    private String yougileEmail;
     private String username;
     private String fullName;
+    private String timezone;
 
     @Column(nullable = false)
     @Builder.Default

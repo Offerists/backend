@@ -144,3 +144,12 @@ create table scheduled_meetings
 create index idx_sm_status_scheduled_at on scheduled_meetings (status, scheduled_at)
     where status = 'PENDING';
 --rollback drop index idx_sm_status_scheduled_at; drop table scheduled_meetings;
+
+--changeset Artyom:9
+alter table app_users add column timezone varchar(50);
+--rollback alter table app_users drop column timezone;
+
+--changeset Artyom:10
+alter table app_users add column yougile_real_name varchar(255);
+alter table app_users add column yougile_email varchar(255);
+--rollback alter table app_users drop column yougile_real_name; alter table app_users drop column yougile_email;

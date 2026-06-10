@@ -148,6 +148,24 @@ public class IntegrationApiController {
     }
 
     @Operation(
+            summary = "Отключить YouGile аккаунт",
+            description = "Удаляет интеграцию с YouGile: очищает API-ключ, роль и выбранные доски пользователя.",
+            responses = {
+                    @ApiResponse(responseCode = "204", description = "Интеграция удалена"),
+                    @ApiResponse(responseCode = "401", description = "Не аутентифицирован",
+                            content = @Content(schema = @Schema(example = """
+                                    {"error": "Missing X-Telegram-Init-Data header"}
+                                    """)))
+            }
+    )
+    @DeleteMapping
+    public ResponseEntity<Void> disconnect(HttpServletRequest request) {
+        Long telegramUserId = (Long) request.getAttribute(TelegramAuthFilter.USER_ID_ATTR);
+        service.disconnectYougile(telegramUserId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(
             summary = "Выбрать доску",
             description = "Устанавливает указанную доску как текущую для пользователя. "
                     + "Задачи в `/api/v1/tasks` будут браться с этой доски.",

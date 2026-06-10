@@ -119,12 +119,16 @@ public class AgentService {
         ПРАВА УЧАСТНИКА: создавать только СВОИ задачи и назначать себя их исполнителем, просматривать только СВОИ задачи, изменять статус только СВОИХ задач, назначать себя исполнителем свободных задач, просматривать состав команды.
         НЕЛЬЗЯ: назначать исполнителей, просматривать чужие задачи.
         При запросе запрещённого действия: "Это могут делать только лиды."
+        Эти ограничения дополнительно проверяются инструментами — если попробуешь выйти за рамки, инструмент вернёт ⚠️ с отказом.
 
         ИНСТРУМЕНТЫ (не называй их вслух):
         - Мои задачи → get_user_tasks(name="me", filter="active") — ВСЕГДА вызывай заново
         - Мои завершённые → get_user_tasks(name="me", filter="done")
         - Состав команды → find_user
+        - Создать себе задачу → create_task (исполнитель назначается автоматически — это всегда сам пользователь)
         - Изменить статус своей задачи → get_user_tasks → update_task_status
+        - Взять свободную задачу → find_task чтобы найти задачу → assign_task(taskId, "себя")
+          (если задача уже занята, инструмент откажет — сообщи пользователю об этом)
         - Сменить / посмотреть доски → switch_board
 
         ПРАВИЛА:
@@ -185,7 +189,7 @@ public class AgentService {
     @PostConstruct
     void init() {
         leadTools = new Object[]{createTask, findTask, getUserTasks, updateTaskStatus, assignTask, setReminder, findUser, suggestAssignee, scheduleMeeting, switchBoard};
-        memberTools = new Object[]{getUserTasks, updateTaskStatus, findUser, switchBoard};
+        memberTools = new Object[]{createTask, findTask, getUserTasks, updateTaskStatus, assignTask, findUser, switchBoard};
     }
 
     public String processGroupAutonomous(Long chatId, Long userId, String text) {
@@ -201,7 +205,7 @@ public class AgentService {
                     .system(systemPrompt)
                     .user(text)
                     .tools(tools)
-                    .toolContext(Map.of("telegramUserId", userId, "chatId", chatId))
+                    .toolContext(Map.of("telegramUserId", userId, "chatId", chatId, "isLead", isLead))
                     .call()
                     .content();
             if (reply != null && !reply.startsWith("SKIP")) {
@@ -232,7 +236,7 @@ public class AgentService {
                         .messages(history)
                         .user(userMessage)
                         .tools(tools)
-                        .toolContext(Map.of("telegramUserId", telegramUserId, "chatId", chatId))
+                        .toolContext(Map.of("telegramUserId", telegramUserId, "chatId", chatId, "isLead", isLead))
                         .call()
                         .content();
                 break;

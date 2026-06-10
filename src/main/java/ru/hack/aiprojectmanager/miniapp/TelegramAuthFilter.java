@@ -67,7 +67,9 @@ public class TelegramAuthFilter extends OncePerRequestFilter {
             request.setAttribute(USER_ID_ATTR, userId);
             chain.doFilter(request, response);
         } catch (Exception e) {
-            log.warn("Init data validation failed: {}", e.getMessage());
+            log.warn("Init data validation failed: {} | initData preview: [{}]",
+                    e.getMessage(),
+                    initData.length() > 200 ? initData.substring(0, 200) + "..." : initData);
             writeError(response, 401, "Invalid or expired init data");
         }
     }

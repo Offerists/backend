@@ -42,4 +42,5 @@ public class UserApiController {
         Long telegramUserId = (Long) request.getAttribute(TelegramAuthFilter.USER_ID_ATTR);
         return service.getProfile(telegramUserId);
     }
+
 }
